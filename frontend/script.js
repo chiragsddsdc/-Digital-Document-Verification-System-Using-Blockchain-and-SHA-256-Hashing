@@ -1,11 +1,10 @@
-// ---------------- CONFIG ----------------
-const BACKEND_URL = window.location.hostname === "localhost" 
-  ? "http://127.0.0.1:5000" 
-  : "https://digital-document-verification-system.onrender.com";
- 
-// <-- If you redeploy backend with a different URL, update BACKEND_URL here.
+/* -------------------------
+   script.js (updated)
+   - hides registry input during Register mode
+   - shows Registered ID after successful registration
+   - allows copy/save/use of Registered ID (saved to localStorage)
+------------------------- */
 
-// ---------------- DOM refs (kept from your original) ----------------
 const fileInput = document.getElementById("fileInput");
 const browse = document.getElementById("browse");
 const uploadArea = document.getElementById("uploadArea");
@@ -47,7 +46,7 @@ let uploadedFile = null;
 verifyBtn && (verifyBtn.disabled = true);
 registerBtn && (registerBtn.disabled = true);
 
-// ---------------- HELPERS ----------------
+// HELPERS
 function formatDate(ts) {
   if (!ts) return "-";
   if (typeof ts === "number") {
@@ -111,13 +110,14 @@ function saveIdToLocal(id) {
   }
 }
 function renderSavedIds() {
+  // optional: you could render a list somewhere — currently we just keep them stored
   return loadSavedIds();
 }
 
 // initial status
 setBcStatus(false, null);
 
-// ---------------- file input handlers ----------------
+// file input handlers
 browse && (browse.onclick = () => fileInput && fileInput.click());
 fileInput && (fileInput.onchange = () => {
   if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
@@ -163,184 +163,109 @@ async function handleFile(file) {
   registerBtn.disabled = false;
 }
 
-// ---------------- MetaMask / web3 helper ----------------
-async function ensureWeb3() {
-  if (!window.ethereum) {
-    throw new Error("MetaMask (or another wallet) is required. Please install it and try again.");
-  }
-  // request access (will open MetaMask popup)
-  await window.ethereum.request({ method: "eth_requestAccounts" });
-  const web3 = new Web3(window.ethereum);
-  const accounts = await web3.eth.getAccounts();
-  if (!accounts || accounts.length === 0) {
-    throw new Error("No accounts found in MetaMask.");
-  }
-  return { web3, user: accounts[0] };
-}
-
-// ---------------- REGISTER DOCUMENT (refactored for MetaMask signing) ----------------
+/* ---------------------------
+   REGISTER DOCUMENT
+   - on success: show Registered ID, allow copy/save/use
+--------------------------- */
 registerBtn && (registerBtn.onclick = async () => {
   if (!uploadedFile) {
     showToast("Upload a document first.", "error");
     return;
   }
 
-  setLoading(true, "Preparing registration...");
+  setLoading(true, "Registering document on blockchain...");
+  resultDiv.className = "result-card";
+  resultDiv.innerHTML = "⏳ Registering document on blockchain...";
+
+  const formData = new FormData();
+  formData.append("file", uploadedFile);
+  formData.append("owner", ownerInput.value || "anonymous");
 
   try {
-    // 1) Upload to backend (backend computes fileHash + creates local registry entry with registered=false)
-    const formData = new FormData();
-    formData.append("file", uploadedFile);
-    formData.append("owner", ownerInput.value || "anonymous");
-
-    const uploadRes = await fetch(`${BACKEND_URL}/api/upload`, {
+    const res = await fetch("/api/upload", {
       method: "POST",
       body: formData
     });
-    const uploadJson = await (async () => { try { return await uploadRes.json(); } catch (e) { return null; }})();
 
-    if (!uploadRes.ok || !uploadJson || !uploadJson.success) {
-      setLoading(false);
-      resultDiv.className = "result-card result-fail";
-      resultDiv.innerHTML = `❌ Upload failed: ${uploadJson?.error || uploadRes.statusText}`;
-      showToast("Upload failed. See console.", "error");
-      await loadHistory();
-      return;
-    }
+    const data = await res.json();
+    setLoading(false);
 
-    const { documentID, fileHash, fileName } = uploadJson;
-    resultDiv.className = "result-card";
-    resultDiv.innerHTML = `Uploaded and prepared. DocumentID: ${documentID}<br>Now open MetaMask to sign the registration transaction...`;
+    if (res.ok && data.success) {
+      // Display success
+      resultDiv.className = "result-card result-success";
+      resultDiv.innerHTML =
+        `✅ Document registered!<br>` +
+        `ID: ${data.documentID}<br>` +
+        `Hash: ${data.fileHash}<br>` +
+        (data.blockchain_tx
+          ? `Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`
+          : "");
 
-    // 2) Load contract ABI & address from backend
-    const contractMetaRes = await fetch(`${BACKEND_URL}/api/contract`);
-    const contractMeta = await (async () => { try { return await contractMetaRes.json(); } catch (e) { return null; }})();
+      setBcStatus(true, data.blockchain_tx);
+      showToast("Document registered on Ethereum.", "success");
 
-    if (!contractMetaRes.ok || !contractMeta || !contractMeta.contract_abi || !contractMeta.contract_address) {
-      setLoading(false);
-      resultDiv.className = "result-card result-fail";
-      resultDiv.innerHTML = `❌ Failed to load contract ABI/address from backend.`;
-      showToast("Failed to load contract ABI/address.", "error");
-      return;
-    }
+      // --- NEW: show Registered ID UI and wire buttons ---
+      if (registeredIdRow && registeredIdText) {
+        registeredIdText.textContent = data.documentID;
+        registeredIdRow.style.display = "block";
+        // also populate verify input so user can immediately verify later
+        if (registryIdInput) registryIdInput.value = data.documentID;
+      }
 
-    // 3) Ensure MetaMask + create contract instance
-    let web3, user;
-    try {
-      ({ web3, user } = await ensureWeb3());
-    } catch (err) {
-      setLoading(false);
-      resultDiv.className = "result-card result-fail";
-      resultDiv.innerHTML = `⚠️ MetaMask required: ${err.message}`;
-      showToast(err.message, "error");
-      return;
-    }
-
-    const contract = new web3.eth.Contract(contractMeta.contract_abi, contractMeta.contract_address);
-
-    // Prepare the transaction method (adjust if solidity signature differs)
-    const txMethod = contract.methods.registerDocument(documentID, fileName, fileHash);
-
-    // Gas estimation (fallback if fails)
-    let gasEstimate;
-    try {
-      gasEstimate = await txMethod.estimateGas({ from: user });
-    } catch (estErr) {
-      console.warn("Gas estimation failed; using fallback gas:", estErr);
-      gasEstimate = 300000;
-    }
-
-    // Send tx using MetaMask provider (this triggers MetaMask UI)
-    txMethod.send({ from: user, gas: gasEstimate })
-      .on("transactionHash", txHash => {
-        console.log("Transaction hash:", txHash);
-        resultDiv.className = "result-card";
-        resultDiv.innerHTML = `Transaction sent: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${txHash}" target="_blank" rel="noopener noreferrer">${txHash}</a><br>Waiting for confirmation...`;
-        setLoading(true, "Waiting for transaction to be mined...");
-      })
-      .on("receipt", async receipt => {
-        console.log("Transaction mined:", receipt);
-        const txHash = receipt.transactionHash;
-
-        // 4) Inform backend to confirm register (store tx hash & mark registered=true)
-        try {
-          const confirmRes = await fetch(`${BACKEND_URL}/api/confirm_register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ documentID, blockchainTx: txHash })
-          });
-          const confirmJson = await (async () => { try { return await confirmRes.json(); } catch(e){ return null; }})();
-
-          setLoading(false);
-
-          if (confirmRes.ok && confirmJson && confirmJson.success) {
-            resultDiv.className = "result-card result-success";
-            resultDiv.innerHTML =
-              `✅ Document registered on-chain!<br>ID: ${documentID}<br>Hash: ${fileHash}<br>` +
-              `Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${txHash}" target="_blank" rel="noopener noreferrer">${txHash}</a>`;
-
-            setBcStatus(true, txHash);
-            showToast("Document registered on Ethereum.", "success");
-
-            // show Registered ID UI
-            if (registeredIdRow && registeredIdText) {
-              registeredIdText.textContent = documentID;
-              registeredIdRow.style.display = "block";
-              if (registryIdInput) registryIdInput.value = documentID;
-            }
-            // wire copy/save/use buttons
-            if (copyRegisteredIdBtn) copyRegisteredIdBtn.onclick = () => {
-              navigator.clipboard.writeText(documentID).then(() => showToast("Registered ID copied to clipboard.", "success")).catch(()=>showToast("Copy failed", "error"));
-            };
-            if (saveRegisteredIdBtn) saveRegisteredIdBtn.onclick = () => { saveIdToLocal(documentID); showToast("Registered ID saved locally.", "success"); };
-            if (useRegisteredIdBtn) useRegisteredIdBtn.onclick = () => { if (registryIdInput) registryIdInput.value = documentID; setActiveAction("verify"); showToast("Registered ID set in verify input.", "info"); };
-
-            await loadRegistry();
-            await loadStats();
-            await loadHistory();
-            return;
-          } else {
-            resultDiv.className = "result-card result-fail";
-            resultDiv.innerHTML = `✅ Tx mined but backend confirm failed. Tx: ${txHash}`;
-            setBcStatus(true, txHash);
-            showToast("Transaction mined but backend confirm failed.", "warning");
-            await loadRegistry();
-            await loadHistory();
-            return;
+      // attach handlers (set after creating text to ensure elements exist)
+      if (copyRegisteredIdBtn) {
+        copyRegisteredIdBtn.onclick = () => {
+          try {
+            navigator.clipboard.writeText(data.documentID);
+            showToast("Registered ID copied to clipboard.", "success");
+          } catch (e) {
+            showToast("Failed to copy Registered ID.", "error");
           }
-        } catch (confirmErr) {
-          console.error("confirm_register error", confirmErr);
-          setLoading(false);
-          resultDiv.className = "result-card result-fail";
-          resultDiv.innerHTML = `Tx mined, but confirming with backend failed. Tx: ${txHash}`;
-          setBcStatus(true, txHash);
-          showToast("Confirm register failed.", "error");
-          await loadRegistry();
-          await loadHistory();
-          return;
-        }
-      })
-      .on("error", txErr => {
-        console.error("Transaction error", txErr);
-        setLoading(false);
-        resultDiv.className = "result-card result-fail";
-        resultDiv.innerHTML = `⚠️ Transaction failed or rejected by user.`;
-        setBcStatus(false, null);
-        showToast("Transaction failed or rejected.", "error");
-      });
+        };
+      }
+      if (saveRegisteredIdBtn) {
+        saveRegisteredIdBtn.onclick = () => {
+          saveIdToLocal(data.documentID);
+          showToast("Registered ID saved locally.", "success");
+        };
+      }
+      if (useRegisteredIdBtn) {
+        useRegisteredIdBtn.onclick = () => {
+          if (registryIdInput) {
+            registryIdInput.value = data.documentID;
+            // switch to verify mode to encourage verification
+            setActiveAction("verify");
+            showToast("Registered ID set in verify input.", "info");
+          }
+        };
+      }
 
+      await loadRegistry();
+      await loadStats();
+      await loadHistory();
+    } else {
+      resultDiv.className = "result-card result-fail";
+      resultDiv.innerHTML =
+        `❌ Registration failed!<br>${data.error || "Unknown error"}`;
+      setBcStatus(false, null);
+      showToast(`Registration failed: ${data.error || "Unknown error"}`, "error");
+      await loadHistory();
+    }
   } catch (err) {
-    console.error("Register flow error:", err);
+    console.error(err);
     setLoading(false);
     resultDiv.className = "result-card result-fail";
-    resultDiv.innerHTML = `⚠️ Error: ${err.message || err}`;
+    resultDiv.innerHTML = "⚠️ Server error while registering!";
     setBcStatus(false, null);
-    showToast("Registration failed.", "error");
+    showToast("Server error while registering.", "error");
     await loadHistory();
   }
 });
 
-// ---------------- VERIFY ----------------
+/* ---------------------------
+   VERIFY DOCUMENT
+   - sends optional documentID (from registryIdInput) and interprets server
+--------------------------- */
 verifyBtn && (verifyBtn.onclick = async () => {
   if (!uploadedFile) {
     showToast("Upload a document first.", "error");
@@ -362,7 +287,7 @@ verifyBtn && (verifyBtn.onclick = async () => {
   formData.append("documentID", registryIdInput ? registryIdInput.value.trim() : "");
 
   try {
-    const res = await fetch(`${BACKEND_URL}/verify`, {
+    const res = await fetch("/verify", {
       method: "POST",
       body: formData
     });
@@ -445,7 +370,7 @@ verifyBtn && (verifyBtn.onclick = async () => {
 
     // fallback: client-side registry lookup
     try {
-      const listRes = await fetch(`${BACKEND_URL}/api/documents`);
+      const listRes = await fetch("/api/documents");
       const docs = await listRes.json();
       const match = Array.isArray(docs) && docs.find(d => {
         const fh = (d.fileHash || "").toString().replace(/^0x/, "").toLowerCase();
@@ -480,6 +405,7 @@ verifyBtn && (verifyBtn.onclick = async () => {
       resultDiv.innerHTML = `❌ Verification Failed!<br>${data?.reason || "Hash mismatch or not on chain"}`;
       setBcStatus(false, null);
       showToast(`Verification failed: ${data?.reason || "Unknown"}`, "error");
+      await loadStats();
       await loadHistory();
       return;
     }
@@ -495,7 +421,7 @@ verifyBtn && (verifyBtn.onclick = async () => {
   }
 });
 
-// ---------------- COPY HASH ----------------
+// COPY HASH
 copyHashBtn && (copyHashBtn.onclick = () => {
   if (hashValue.textContent !== "N/A" && hashValue.textContent !== "Computing...") {
     navigator.clipboard.writeText(hashValue.textContent)
@@ -504,7 +430,7 @@ copyHashBtn && (copyHashBtn.onclick = () => {
   }
 });
 
-// ---------------- PREVIEW MODAL ----------------
+// PREVIEW MODAL
 filePreview && (filePreview.onclick = () => {
   if (!uploadedFile) return;
   modalContent.innerHTML = "";
@@ -524,7 +450,7 @@ filePreview && (filePreview.onclick = () => {
 modalClose && (modalClose.onclick = () => previewModal.style.display = "none");
 window.onclick = e => { if (e.target === previewModal) previewModal.style.display = "none"; };
 
-// ---------------- THEME TOGGLE ----------------
+// THEME TOGGLE
 themeToggle && (themeToggle.onclick = () => {
   document.body.classList.toggle("light");
   document.body.classList.toggle("dark");
@@ -534,13 +460,16 @@ themeToggle && (themeToggle.onclick = () => {
 });
 
 /* ---------------------------
-   TABS + UI state
+   TABS: single-tab-per-route support
+   - hide registryIdRow during register
+   - show registryIdRow during verify
 --------------------------- */
 function setActiveAction(target) {
   actionTabs.forEach(tab => {
     tab.classList.toggle("active", tab.dataset.target === target);
   });
 
+  // clear previous result when switching
   if (resultDiv) {
     resultDiv.innerHTML = "";
     resultDiv.className = "result-card";
@@ -549,15 +478,19 @@ function setActiveAction(target) {
   if (target === "register") {
     registerBtn.style.display = "inline-flex";
     verifyBtn.style.display = "none";
+    // hide registry id input area when registering
     if (registryIdRow) registryIdRow.style.display = "none";
+    // hide registeredIdRow until a new registration occurs
     if (registeredIdRow) registeredIdRow.style.display = "none";
   } else {
     registerBtn.style.display = "none";
     verifyBtn.style.display = "inline-flex";
     if (registryIdRow) registryIdRow.style.display = "block";
+    // leave registeredIdRow as-is (persist if shown)
   }
 }
 
+// if there's only 1 tab per-route, use it; otherwise wire click handlers
 if (actionTabs.length === 1) {
   setActiveAction(actionTabs[0].dataset.target);
 } else {
@@ -566,15 +499,16 @@ if (actionTabs.length === 1) {
   });
 }
 
+// fallback
 setActiveAction(defaultMode);
 
 /* ---------------------------
-   LOAD UI data: registry, history, stats (use BACKEND_URL)
+   LOAD UI data: registry, history, stats
 --------------------------- */
 async function loadRegistry() {
   if (!registryTableBody) return;
   try {
-    const res = await fetch(`${BACKEND_URL}/api/documents`);
+    const res = await fetch("/api/documents");
     const docs = await res.json();
 
     registryTableBody.innerHTML = "";
@@ -622,7 +556,7 @@ async function loadRegistry() {
 async function loadHistory() {
   if (!historyList) return;
   try {
-    const res = await fetch(`${BACKEND_URL}/api/history`);
+    const res = await fetch("/api/history");
     const events = await res.json();
 
     historyList.innerHTML = "";
@@ -642,7 +576,7 @@ async function loadHistory() {
 
 async function loadStats() {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/stats`);
+    const res = await fetch("/api/stats");
     const data = await res.json();
     if (statsTotalDocs) statsTotalDocs.textContent = data.total_documents ?? "0";
     if (statsTotalVerifications) statsTotalVerifications.textContent = data.total_verifications ?? "0";
