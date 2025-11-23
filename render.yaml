@@ -1,0 +1,24 @@
+# render.yaml — deploy config for Render (Flask app)
+# Save this as render.yaml in your repo root (then push to GitHub)
+# NOTE: Replace the repo: field with your actual GitHub repo URL before using in Render dashboard
+services:
+  - type: web
+    name: digital-document-verification-backend
+    env: python
+    repo: "file:///mnt/data/digital-document-verification (3).zip"
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 3
+    healthCheckPath: /
+    envVars:
+      - key: WEB3_PROVIDER_URI
+        sync: true
+      - key: PRIVATE_KEY
+        sync: true
+      - key: FLASK_ENV
+        value: production
+        sync: false
+    # Optional: add persistent disk if your app writes files you need to keep across deploys
+    # Uncomment and set size_gb if you want Render to allocate persistent storage
+    # persistentDisk:
+    #   sizeGB: 5
