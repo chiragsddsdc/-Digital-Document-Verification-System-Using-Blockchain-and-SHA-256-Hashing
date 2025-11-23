@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>DocChain | Verification Dashboard</title>
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body class="dark" data-default-mode="{{ default_mode or 'register' }}">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h2>DocChain</h2>
+    <nav>
+      <a class="nav-btn {% if active_page=='workflow' and default_mode=='verify' %}active{% endif %}"
+        href="{{ url_for('verify_page') }}">
+        <i data-lucide="file-check"></i> Verify
+      </a>
+
+      <a class="nav-btn {% if active_page=='workflow' and default_mode=='register' %}active{% endif %}"
+        href="{{ url_for('register_page') }}">
+        <i data-lucide="file-plus-2"></i> Register
+      </a>
+
+      <a class="nav-btn {% if active_page=='history' %}active{% endif %}" href="{{ url_for('history_page') }}">
+        <i data-lucide="clock-4"></i> History
+      </a>
+
+      <a class="nav-btn {% if active_page=='registry' %}active{% endif %}" href="{{ url_for('registry_page') }}">
+        <i data-lucide="database"></i> Registry
+      </a>
+
+      <button class="nav-btn" id="themeToggle">
+        <i data-lucide="moon"></i> Theme
+      </button>
+    </nav>
+  </aside>
+
+  <!-- Main -->
+  <main class="content">
+    <header>
+      <h1>Document Verification Dashboard</h1>
+      <p>Register documents on Ethereum and verify their integrity using SHA-256 hashes.</p>
+    </header>
+
+    <!-- Stats -->
+    <section class="stats-bar" id="statsBar">
+      <div class="stat-chip">
+        <span class="stat-label">Total Documents</span>
+        <span class="stat-value" id="statTotalDocs">–</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Total Verifications</span>
+        <span class="stat-value" id="statTotalVerifications">–</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Last Updated</span>
+        <span class="stat-value" id="statLastUpdated">–</span>
+      </div>
+    </section>
+
+    <!-- Workflow Page -->
+    <section id="page-workflow" class="page {% if active_page=='workflow' %}page-active{% endif %}">
+      <section class="upload-card" id="uploadCard">
+        <!-- Upload -->
+        <div class="upload-area" id="uploadArea">
+          <i data-lucide="upload-cloud" class="upload-icon"></i>
+          <p>Drag & Drop or <span id="browse">browse</span> to upload</p>
+          <input type="file" id="fileInput" hidden />
+        </div>
+
+        <!-- Preview -->
+        <div class="file-preview" id="filePreview"></div>
+
+        <!-- Hash -->
+        <div class="generated-hash">
+          Generated Hash:
+          <span id="hashValue">N/A</span>
+          <button id="copyHashBtn">📋 Copy</button>
+        </div>
+
+        <!-- Owner Input -->
+        <div class="file-owner">
+          <input type="text" id="ownerInput" placeholder="Owner name (optional)" />
+        </div>
+
+        <!-- ************** SHOW ONLY IN VERIFY ************** -->
+        <div class="registry-id-row" id="registryIdRow" style="display:none;">
+          <input type="text" id="registryIdInput" placeholder="Registry ID (optional — verify by ID)" />
+          <small class="hint">Paste the Document ID if you want to verify a specific record.</small>
+        </div>
+
+        <!-- ************** REGISTERED ID PANEL AFTER SUCCESS ************** -->
+        <div class="registered-id-row" id="registeredIdRow" style="display:none; margin-top:10px;">
+          <div id="registeredIdText"
+            style="font-family: ui-monospace, Menlo, Monaco, monospace; word-break: break-all;"></div>
+
+          <div style="margin-top: 8px; display: flex; gap: 8px;">
+            <button id="copyRegisteredIdBtn">📋 Copy Registered ID</button>
+            <button id="saveRegisteredIdBtn">💾 Save for Later</button>
+            <button id="useRegisteredIdBtn">🔎 Use for Verify</button>
+          </div>
+
+          <small class="hint" style="display:block; margin-top:6px;">
+            Saved IDs are stored in your browser (localStorage).
+          </small>
+        </div>
+
+        <!-- File Info -->
+        <div class="file-info" id="fileInfo"></div>
+
+        <!-- Blockchain Status -->
+        <div class="bc-status" id="bcStatus">
+          Status: <span class="badge badge-offchain">Not stored on blockchain</span>
+        </div>
+
+        <!-- ONE TAB ONLY -->
+        <div class="action-toggle">
+          {% if default_mode == 'register' %}
+          <button class="action-tab active" data-target="register">Register</button>
+          {% else %}
+          <button class="action-tab active" data-target="verify">Verify</button>
+          {% endif %}
+        </div>
+
+        <!-- Buttons -->
+        <div class="action-buttons">
+          <button id="registerBtn" disabled>Register Document</button>
+          <button id="verifyBtn" disabled>Verify Document</button>
+        </div>
+
+        <!-- Loader -->
+        <div id="loader" class="loader hidden">
+          <div class="spinner"></div>
+          <span id="loaderText">Processing...</span>
+        </div>
+      </section>
+
+      <section class="result-card" id="result"></section>
+    </section>
+
+    <!-- History Page -->
+    <section id="page-history" class="page {% if active_page=='history' %}page-active{% endif %}">
+      <section class="history-card">
+        <h2>Verification History</h2>
+        <div id="historyList"></div>
+      </section>
+    </section>
+
+    <!-- Registry Page -->
+    <section id="page-registry" class="page {% if active_page=='registry' %}page-active{% endif %}">
+      <section class="history-card">
+        <h2>Blockchain Registry</h2>
+        <p class="registry-subtitle">All documents registered via this service.</p>
+
+        <div class="registry-wrapper">
+          <table class="registry-table">
+            <thead>
+              <tr>
+                <th>Document ID</th>
+                <th>File Name</th>
+                <th>Hash</th>
+                <th>Tx</th>
+                <th>Registered At</th>
+              </tr>
+            </thead>
+            <tbody id="registryTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div id="previewModal" class="modal">
+    <span class="close">&times;</span>
+    <div class="modal-content" id="modalContent"></div>
+  </div>
+
+  <!-- Toasts -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- JS -->
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+
+</html>

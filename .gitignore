@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+hash_db.json
+history_db.json
+uploads/
+temp/
+logs/
+.env
