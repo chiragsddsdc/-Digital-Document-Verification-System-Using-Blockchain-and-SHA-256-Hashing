@@ -1,6 +1,6 @@
 // ---------------- CONFIG ----------------
 const BACKEND_URL = "https://digital-document-verification-system.onrender.com"; 
-// <-- update this if your backend URL changes
+// <-- If you redeploy backend with a different URL, update BACKEND_URL here.
 
 // ---------------- DOM refs (kept from your original) ----------------
 const fileInput = document.getElementById("fileInput");
