@@ -6,13 +6,12 @@
   <title>DocChain | Verification Dashboard</title>
 
   <!-- stylesheet: served by Flask static (frontend is configured as static root) -->
-  <!-- use root paths so Flask's static_folder="frontend" serves /style.css and /script.js -->
   <link rel="stylesheet" href="/style.css">
 
   <!-- lucide icons (CDN) -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- Expose backend base URL to the frontend JS (safe, no secrets) -->
+  <!-- Expose backend base URL to the frontend JS -->
   <script>
     const API_BASE_URL = "{{ request.url_root[:-1] if request.url_root.endswith('/') else request.url_root }}";
     console.debug("API_BASE_URL =", API_BASE_URL);
@@ -74,6 +73,16 @@
 
     <!-- ========== PAGE: WORKFLOW (Register / Verify) ========== -->
     <section id="page-workflow" class="page {% if active_page=='workflow' %}page-active{% endif %}">
+      
+      <!-- Action Tabs (Register / Verify) -->
+      <div class="action-tabs">
+        <button class="action-tab" data-target="register">
+          <i data-lucide="file-plus-2"></i> Register
+        </button>
+        <button class="action-tab" data-target="verify">
+          <i data-lucide="file-check"></i> Verify
+        </button>
+      </div>
 
       <!-- Upload Card -->
       <section class="upload-card" id="uploadCard" aria-label="Upload document">
@@ -82,6 +91,9 @@
           <p>Drag &amp; Drop or <span id="browse" role="button" tabindex="0" aria-label="Browse files">browse</span> to upload</p>
           <input type="file" id="fileInput" hidden aria-hidden="true" />
         </div>
+
+        <!-- File Info Display -->
+        <div id="fileInfo" class="file-info"></div>
 
         <!-- File Preview -->
         <div class="file-preview" id="filePreview" aria-live="polite" aria-atomic="true"></div>
@@ -94,36 +106,108 @@
           <button id="copyHashBtn" type="button" aria-label="Copy generated hash">📋 Copy</button>
         </div>
 
-        <!-- Owner input (optional) -->
+        <!-- Owner input (for registration) -->
         <div class="file-owner">
           <label for="ownerInput" class="visually-hidden">Owner name (optional)</label>
           <input type="text" id="ownerInput" placeholder="Owner name (optional)" aria-label="Owner name (optional)">
         </div>
+
+        <!-- Verify by ID input (shown in verify mode) -->
+        <div id="registryIdRow" class="registry-id-row" style="display: none;">
+          <label for="registryIdInput">Document ID (optional):</label>
+          <input type="text" id="registryIdInput" placeholder="Enter document ID to verify">
+        </div>
+
+        <!-- Registered ID display (shown after registration) -->
+        <div id="registeredIdRow" class="registered-id-row" style="display: none;">
+          <label>Registered Document ID:</label>
+          <code id="registeredIdText"></code>
+          <button id="copyRegisteredIdBtn" type="button">📋 Copy</button>
+          <button id="saveRegisteredIdBtn" type="button">💾 Save</button>
+          <button id="useRegisteredIdBtn" type="button">✓ Use for Verify</button>
+        </div>
+
+        <!-- Blockchain Status -->
+        <div id="bcStatus" class="bc-status"></div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button id="registerBtn" class="btn btn-primary">
+            <i data-lucide="upload"></i> Register Document
+          </button>
+          <button id="verifyBtn" class="btn btn-secondary" style="display: none;">
+            <i data-lucide="shield-check"></i> Verify Document
+          </button>
+        </div>
+
+        <!-- Result Display -->
+        <div id="result" class="result-card"></div>
       </section>
       <!-- end upload-card -->
 
     </section>
     <!-- end page-workflow -->
 
+    <!-- ========== PAGE: HISTORY ========== -->
+    <section id="page-history" class="page {% if active_page=='history' %}page-active{% endif %}">
+      <h2>Verification History</h2>
+      <div id="historyList" class="history-list">
+        <p>Loading history...</p>
+      </div>
+    </section>
+
+    <!-- ========== PAGE: REGISTRY ========== -->
+    <section id="page-registry" class="page {% if active_page=='registry' %}page-active{% endif %}">
+      <h2>Document Registry</h2>
+      <div class="registry-table-wrapper">
+        <table class="registry-table">
+          <thead>
+            <tr>
+              <th>Document ID</th>
+              <th>File Name</th>
+              <th>Hash</th>
+              <th>Blockchain Tx</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="registryTableBody">
+            <tr><td colspan="5">Loading registry...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
   </main>
+
+  <!-- Loader -->
+  <div id="loader" class="loader hidden">
+    <div class="loader-spinner"></div>
+    <p id="loaderText">Processing...</p>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Preview Modal -->
+  <div id="previewModal" class="modal" style="display: none;">
+    <div class="modal-content-wrapper">
+      <span class="close">&times;</span>
+      <div id="modalContent" class="modal-content"></div>
+    </div>
+  </div>
 
   <!-- app JS: served by Flask static root -->
   <script src="/script.js"></script>
 
-  <!-- initialize lucide icons (backwards-compatible + waits for DOM) -->
+  <!-- initialize lucide icons -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // Prefer the modern API (createIcons), fallback to replace()
       if (window.lucide) {
         if (typeof lucide.createIcons === "function") {
           try { lucide.createIcons(); } catch (e) { console.warn("lucide.createIcons failed", e); }
         } else if (typeof lucide.replace === "function") {
           try { lucide.replace(); } catch (e) { console.warn("lucide.replace failed", e); }
-        } else {
-          console.warn("lucide loaded but no known init function found");
         }
-      } else {
-        console.warn("lucide not loaded");
       }
     });
   </script>

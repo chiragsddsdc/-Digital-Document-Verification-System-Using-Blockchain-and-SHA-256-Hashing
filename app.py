@@ -1,5 +1,5 @@
-# app.py (full updated)
-from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file, send_from_directory
+# app.py (production-ready for Render)
+from flask import Flask, request, jsonify, render_template, send_from_directory
 from flasgger import Swagger
 import hashlib, os, json, time, uuid, logging
 from datetime import datetime
@@ -7,20 +7,16 @@ from werkzeug.utils import secure_filename
 from web3 import Web3
 from flask_cors import CORS
 
-# ------------------------------
-# Blockchain Configuration (use ENV variables)
-# ------------------------------
+# Blockchain Configuration
 INFURA_URL = os.environ.get("INFURA_URL", "https://sepolia.infura.io/v3/ed3f3c74898d44e68271420d800d9709")
 CONTRACT_ADDRESS_RAW = os.environ.get("CONTRACT_ADDRESS", "0x30bF45869588B6C3f10320C1C1D0db41D29e17BD")
 ACCOUNT_ADDRESS_RAW = os.environ.get("ACCOUNT_ADDRESS", "0x076db2ab3a15368e1692711715c956f0aaebd223")
 
-# NOTE: no PRIVATE_KEY used on server anymore
 w3 = Web3(Web3.HTTPProvider(INFURA_URL))
-
 CONTRACT_ADDRESS = Web3.to_checksum_address(CONTRACT_ADDRESS_RAW)
 ACCOUNT_ADDRESS = Web3.to_checksum_address(ACCOUNT_ADDRESS_RAW)
 
-# load ABI from file if present (used by /api/contract to return to frontend)
+# Load ABI
 ABI_FILE = "contract_abi.json"
 CONTRACT_ABI = None
 if os.path.exists(ABI_FILE):
@@ -30,13 +26,18 @@ if os.path.exists(ABI_FILE):
     except Exception as e:
         CONTRACT_ABI = None
 
-# ------------------------------
 # Flask App Setup
-# ------------------------------
-# static_folder set to 'frontend' so url_for('static', filename='...') will resolve
-app = Flask(__name__, template_folder="frontend", static_folder="frontend")
+app = Flask(__name__, template_folder="frontend", static_folder="frontend", static_url_path='')
 swagger = Swagger(app)
-CORS(app)  # allow cross-origin requests from frontend
+
+# CORS Configuration
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 UPLOAD_FOLDER = "uploads"
 DB_FILE = "hash_db.json"
@@ -45,44 +46,43 @@ HISTORY_FILE = "history_db.json"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs("temp", exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ------------------------------
-# Security Headers (CSP + nosniff)
-# ------------------------------
+# Security Headers
 @app.after_request
 def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
-
+    
+    # Relaxed CSP for Web3 compatibility
     csp = (
-        "default-src 'self'; "
-        "script-src 'self' https://unpkg.com 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob:; "
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.ethers.io https://*.infura.io; "
+        "style-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "img-src 'self' data: blob: https:; "
         "font-src 'self' https://unpkg.com data:; "
-        "connect-src 'self' https: ws:; "
+        "connect-src 'self' https: wss: ws: https://*.infura.io https://sepolia.infura.io; "
         "frame-src 'self' blob:; "
     )
     response.headers["Content-Security-Policy"] = csp
+    
     return response
 
-# ------------------------------
-# Optional static route for requests that reference /frontend/...
-# ------------------------------
-# Some logs showed requests to /frontend/style.css — support that path too.
-@app.route("/frontend/<path:filename>")
-def frontend_files(filename):
-    return send_from_directory("frontend", filename)
+# Serve static files explicitly
+@app.route('/style.css')
+def serve_css():
+    return send_from_directory('frontend', 'style.css', mimetype='text/css')
 
+@app.route('/script.js')
+def serve_js():
+    return send_from_directory('frontend', 'script.js', mimetype='application/javascript')
 
-# ------------------------------
-# Local Registry (Documents DB)
-# ------------------------------
+# OPTIONS handler for CORS preflight
+@app.route("/<path:path>", methods=["OPTIONS"])
+def handle_options(path):
+    return jsonify({"status": "ok"}), 200
 
+# Database functions
 def init_db():
     if not os.path.exists(DB_FILE):
         with open(DB_FILE, "w") as f:
@@ -107,10 +107,7 @@ def generate_chunk_hash(file_path, chunk_size=8192):
             sha256_hash.update(chunk)
     return sha256_hash.hexdigest()
 
-# ------------------------------
-# Persistent History (JSON list)
-# ------------------------------
-
+# History functions
 def init_history():
     if not os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "w") as f:
@@ -133,13 +130,10 @@ def append_history(event: dict):
     history.append(event)
     save_history(history)
 
-# ------------------------------
-# PAGE ROUTES (separate URLs)
-# ------------------------------
-
+# PAGE ROUTES
 @app.route("/")
 def home():
-    return redirect(url_for("verify_page"))
+    return render_template("index.html", active_page="workflow", default_mode="verify")
 
 @app.route("/verify")
 def verify_page():
@@ -157,18 +151,9 @@ def history_page():
 def registry_page():
     return render_template("index.html", active_page="registry", default_mode="verify")
 
-# ------------------------------
 # API ROUTES
-# ------------------------------
-
-# ====== UPLOAD (Compute & store metadata; client will sign & send tx via MetaMask) ======
-
 @app.route("/api/upload", methods=["POST"])
 def upload_document():
-    """
-    Upload endpoint changed: server computes file hash and stores metadata locally.
-    The client (browser) must perform the on-chain register transaction using MetaMask.
-    """
     try:
         if "file" not in request.files:
             return jsonify({"error": "No file provided"}), 400
@@ -182,12 +167,10 @@ def upload_document():
         file_path = os.path.join(UPLOAD_FOLDER, f"{document_id}_{filename}")
         file.save(file_path)
 
-        # Compute file hash
         file_hash = generate_chunk_hash(file_path)
         owner = request.form.get("owner", "anonymous")
         ts_now = int(time.time())
 
-        # Save to local document registry (NOT yet on blockchain)
         db = load_db()
         db[document_id] = {
             "fileName": filename,
@@ -199,7 +182,6 @@ def upload_document():
         }
         save_db(db)
 
-        # Save to persistent history (local)
         append_history({
             "timestamp": ts_now,
             "action": "register_prepare",
@@ -210,9 +192,8 @@ def upload_document():
             "blockchainTx": None,
         })
 
-        logger.info(f"Uploaded & prepared for on-chain registration: {document_id}")
+        logger.info(f"Uploaded & prepared: {document_id}")
 
-        # Return the data the frontend needs to call contract via MetaMask
         return jsonify({
             "success": True,
             "documentID": document_id,
@@ -223,32 +204,15 @@ def upload_document():
             "instruction": "CALL_CONTRACT_WITH_METAMASK",
             "contract_address": CONTRACT_ADDRESS,
             "contract_abi_path": "/api/contract" if CONTRACT_ABI else None,
-            "message": "Frontend must call registerDocument(documentID, fileName, fileHash) using MetaMask and then call /api/confirm_register with the returned transaction hash."
+            "message": "Frontend must call registerDocument using MetaMask"
         }), 200
 
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        append_history({
-            "timestamp": int(time.time()),
-            "action": "register_prepare",
-            "fileName": request.files.get("file").filename if "file" in request.files else None,
-            "documentID": None,
-            "fileHash": None,
-            "success": False,
-            "blockchainTx": None,
-            "reason": str(e),
-        })
         return jsonify({"error": str(e)}), 500
-
-# ====== Confirm register (frontend calls after MetaMask tx) ======
 
 @app.route("/api/confirm_register", methods=["POST"])
 def confirm_register():
-    """
-    After the frontend submits the transaction using MetaMask, it can call this endpoint
-    to mark the local registry entry as registered and store the blockchain tx hash.
-    Expected JSON body: { "documentID": "...", "blockchainTx": "0x..." }
-    """
     try:
         data = request.get_json(force=True)
         document_id = data.get("documentID")
@@ -281,19 +245,7 @@ def confirm_register():
 
     except Exception as e:
         logger.error(f"confirm_register error: {e}")
-        append_history({
-            "timestamp": int(time.time()),
-            "action": "register_confirm",
-            "fileName": None,
-            "documentID": None,
-            "fileHash": None,
-            "success": False,
-            "blockchainTx": None,
-            "reason": str(e),
-        })
         return jsonify({"error": str(e)}), 500
-
-# ====== VERIFY (HASH vs REGISTRY) ======
 
 @app.route("/verify", methods=["POST"])
 def verify_document():
@@ -361,7 +313,7 @@ def verify_document():
                     "documentID": document_id,
                     "fileName": meta.get("fileName"),
                     "blockchain_tx": blockchain_tx,
-                    "message": "Hashes match for given document ID"
+                    "message": "Hashes match"
                 }), 200
             else:
                 append_history({
@@ -382,38 +334,30 @@ def verify_document():
                     "documentID": document_id,
                     "fileName": meta.get("fileName"),
                     "blockchain_tx": blockchain_tx,
-                    "message": "Document ID found but hash does not match (tampering detected)"
+                    "message": "Document tampered"
                 }), 200
 
-        # fallback: search for matching hash in registry
-        matched_doc_id = None
-        matched_meta = None
-
+        # Fallback: search by hash
         for doc_id, meta in db.items():
             if (meta.get("fileHash") or "").replace("0x", "").lower() == provided_hash_norm:
-                matched_doc_id = doc_id
-                matched_meta = meta
-                break
-
-        if matched_doc_id:
-            append_history({
-                "timestamp": ts_now,
-                "action": "verify",
-                "fileName": matched_meta.get("fileName"),
-                "documentID": matched_doc_id,
-                "fileHash": provided_hash,
-                "success": True,
-                "blockchainTx": matched_meta.get("blockchainTx"),
-            })
-            return jsonify({
-                "verified": True,
-                "reason": "verified",
-                "computed_hash": provided_hash,
-                "documentID": matched_doc_id,
-                "fileName": matched_meta.get("fileName"),
-                "blockchain_tx": matched_meta.get("blockchainTx"),
-                "message": "Document hash found in registry"
-            }), 200
+                append_history({
+                    "timestamp": ts_now,
+                    "action": "verify",
+                    "fileName": meta.get("fileName"),
+                    "documentID": doc_id,
+                    "fileHash": provided_hash,
+                    "success": True,
+                    "blockchainTx": meta.get("blockchainTx"),
+                })
+                return jsonify({
+                    "verified": True,
+                    "reason": "verified",
+                    "computed_hash": provided_hash,
+                    "documentID": doc_id,
+                    "fileName": meta.get("fileName"),
+                    "blockchain_tx": meta.get("blockchainTx"),
+                    "message": "Document hash found"
+                }), 200
 
         append_history({
             "timestamp": ts_now,
@@ -430,24 +374,12 @@ def verify_document():
             "verified": False,
             "reason": "not_registered",
             "computed_hash": provided_hash,
-            "message": "Hash not found in registry"
+            "message": "Hash not found"
         }), 200
 
     except Exception as e:
         logger.error(f"Verify error: {e}")
-        append_history({
-            "timestamp": int(time.time()),
-            "action": "verify",
-            "fileName": request.files.get("file").filename if "file" in request.files else None,
-            "documentID": None,
-            "fileHash": None,
-            "success": False,
-            "blockchainTx": None,
-            "reason": str(e),
-        })
         return jsonify({"verified": False, "reason": "server_error", "message": str(e)}), 500
-
-# ====== REGISTRY LIST (for table) ======
 
 @app.route("/api/documents", methods=["GET"])
 def list_documents():
@@ -465,15 +397,11 @@ def list_documents():
         })
     return jsonify(docs)
 
-# ====== HISTORY API ======
-
 @app.route("/api/history", methods=["GET"])
 def api_history():
     history = load_history()
     history_sorted = sorted(history, key=lambda h: h.get("timestamp", 0), reverse=True)
     return jsonify(history_sorted)
-
-# ====== STATS ======
 
 @app.route("/api/stats", methods=["GET"])
 def stats():
@@ -486,23 +414,19 @@ def stats():
         "total_verifications": total_verifications,
     })
 
-# ====== CONTRACT ABI endpoint ======
 @app.route("/api/contract", methods=["GET"])
 def api_contract():
-    """
-    Returns contract address and ABI for the frontend to use with web3/MetaMask.
-    """
     return jsonify({
         "contract_address": CONTRACT_ADDRESS,
         "contract_abi": CONTRACT_ABI
     })
 
-if __name__ == "__main__":
-    import os
-    print("Starting local Flask development server")
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "healthy", "timestamp": int(time.time())}), 200
 
+if __name__ == "__main__":
+    print("Starting Flask server")
     port = int(os.environ.get("PORT", 5000))
     debug_mode = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
-
-    # Only when running locally
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
