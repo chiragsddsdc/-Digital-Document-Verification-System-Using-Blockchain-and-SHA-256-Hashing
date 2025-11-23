@@ -1,8 +1,9 @@
 /* -------------------------
    script.js (updated)
-   - hides registry input during Register mode
-   - shows Registered ID after successful registration
-   - allows copy/save/use of Registered ID (saved to localStorage)
+   - uses API_BASE_URL injected by template (avoid relative-path mistakes)
+   - helper `api()` wraps fetch calls
+   - replaced lucide.createIcons() with lucide.replace()
+   - small robustness fixes for clipboard & optional elements
 ------------------------- */
 
 const fileInput = document.getElementById("fileInput");
@@ -43,6 +44,15 @@ const defaultMode = document.body.dataset.defaultMode || "register";
 
 let uploadedFile = null;
 
+// API helper: API_BASE_URL is injected by the template (index.html)
+const API_BASE = typeof API_BASE_URL !== "undefined" ? API_BASE_URL : "";
+function api(path, opts = {}) {
+  // ensure path begins with /
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const url = `${API_BASE}${p}`;
+  return fetch(url, opts);
+}
+
 verifyBtn && (verifyBtn.disabled = true);
 registerBtn && (registerBtn.disabled = true);
 
@@ -74,9 +84,9 @@ function setBcStatus(isOnChain, txHash) {
 function setLoading(isLoading, message) {
   if (!loader) return;
   loader.classList.toggle("hidden", !isLoading);
-  loaderText.textContent = message || "Processing...";
-  registerBtn.disabled = isLoading || !uploadedFile;
-  verifyBtn.disabled = isLoading || !uploadedFile;
+  loaderText && (loaderText.textContent = message || "Processing...");
+  if (registerBtn) registerBtn.disabled = isLoading || !uploadedFile;
+  if (verifyBtn) verifyBtn.disabled = isLoading || !uploadedFile;
 }
 
 function showToast(message, type = "info") {
@@ -110,7 +120,6 @@ function saveIdToLocal(id) {
   }
 }
 function renderSavedIds() {
-  // optional: you could render a list somewhere — currently we just keep them stored
   return loadSavedIds();
 }
 
@@ -132,40 +141,43 @@ async function handleFile(file) {
   uploadedFile = file;
   if (!file) return;
 
-  fileInfo.innerHTML = `📄 <strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)`;
-  filePreview.innerHTML = "";
-  hashValue.textContent = "Computing...";
-  verifyBtn.disabled = true;
-  registerBtn.disabled = true;
-  resultDiv.innerHTML = "";
-  resultDiv.className = "result-card";
+  if (fileInfo) fileInfo.innerHTML = `📄 <strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)`;
+  if (filePreview) filePreview.innerHTML = "";
+  if (hashValue) hashValue.textContent = "Computing...";
+  verifyBtn && (verifyBtn.disabled = true);
+  registerBtn && (registerBtn.disabled = true);
+  if (resultDiv) {
+    resultDiv.innerHTML = "";
+    resultDiv.className = "result-card";
+  }
   setBcStatus(false, null);
 
   const buffer = await file.arrayBuffer();
   const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const generatedHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-  hashValue.textContent = generatedHash;
+  if (hashValue) hashValue.textContent = generatedHash;
 
-  if (file.type.startsWith("image/")) {
-    const img = document.createElement("img");
-    img.src = URL.createObjectURL(file);
-    filePreview.appendChild(img);
-  } else if (file.type === "application/pdf") {
-    const iframe = document.createElement("iframe");
-    iframe.src = URL.createObjectURL(file);
-    filePreview.appendChild(iframe);
-  } else {
-    filePreview.textContent = `Uploaded File: ${file.name}`;
+  if (filePreview) {
+    if (file.type.startsWith("image/")) {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      filePreview.appendChild(img);
+    } else if (file.type === "application/pdf") {
+      const iframe = document.createElement("iframe");
+      iframe.src = URL.createObjectURL(file);
+      filePreview.appendChild(iframe);
+    } else {
+      filePreview.textContent = `Uploaded File: ${file.name}`;
+    }
   }
 
-  verifyBtn.disabled = false;
-  registerBtn.disabled = false;
+  verifyBtn && (verifyBtn.disabled = false);
+  registerBtn && (registerBtn.disabled = false);
 }
 
 /* ---------------------------
    REGISTER DOCUMENT
-   - on success: show Registered ID, allow copy/save/use
 --------------------------- */
 registerBtn && (registerBtn.onclick = async () => {
   if (!uploadedFile) {
@@ -174,49 +186,50 @@ registerBtn && (registerBtn.onclick = async () => {
   }
 
   setLoading(true, "Registering document on blockchain...");
-  resultDiv.className = "result-card";
-  resultDiv.innerHTML = "⏳ Registering document on blockchain...";
+  if (resultDiv) {
+    resultDiv.className = "result-card";
+    resultDiv.innerHTML = "⏳ Registering document on blockchain...";
+  }
 
   const formData = new FormData();
   formData.append("file", uploadedFile);
-  formData.append("owner", ownerInput.value || "anonymous");
+  formData.append("owner", ownerInput ? ownerInput.value || "anonymous" : "anonymous");
 
   try {
-    const res = await fetch("/api/upload", {
+    const res = await api("/api/upload", {
       method: "POST",
       body: formData
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setLoading(false);
 
     if (res.ok && data.success) {
-      // Display success
-      resultDiv.className = "result-card result-success";
-      resultDiv.innerHTML =
-        `✅ Document registered!<br>` +
-        `ID: ${data.documentID}<br>` +
-        `Hash: ${data.fileHash}<br>` +
-        (data.blockchain_tx
-          ? `Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`
-          : "");
+      if (resultDiv) {
+        resultDiv.className = "result-card result-success";
+        resultDiv.innerHTML =
+          `✅ Document registered!<br>` +
+          `ID: ${data.documentID}<br>` +
+          `Hash: ${data.fileHash}<br>` +
+          (data.blockchain_tx
+            ? `Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`
+            : "");
+      }
 
       setBcStatus(true, data.blockchain_tx);
       showToast("Document registered on Ethereum.", "success");
 
-      // --- NEW: show Registered ID UI and wire buttons ---
+      // show Registered ID UI and wire buttons
       if (registeredIdRow && registeredIdText) {
-        registeredIdText.textContent = data.documentID;
+        registeredIdText.textContent = data.documentID || "";
         registeredIdRow.style.display = "block";
-        // also populate verify input so user can immediately verify later
-        if (registryIdInput) registryIdInput.value = data.documentID;
+        if (registryIdInput) registryIdInput.value = data.documentID || "";
       }
 
-      // attach handlers (set after creating text to ensure elements exist)
       if (copyRegisteredIdBtn) {
         copyRegisteredIdBtn.onclick = () => {
           try {
-            navigator.clipboard.writeText(data.documentID);
+            navigator.clipboard.writeText(data.documentID || "");
             showToast("Registered ID copied to clipboard.", "success");
           } catch (e) {
             showToast("Failed to copy Registered ID.", "error");
@@ -225,15 +238,14 @@ registerBtn && (registerBtn.onclick = async () => {
       }
       if (saveRegisteredIdBtn) {
         saveRegisteredIdBtn.onclick = () => {
-          saveIdToLocal(data.documentID);
+          saveIdToLocal(data.documentID || "");
           showToast("Registered ID saved locally.", "success");
         };
       }
       if (useRegisteredIdBtn) {
         useRegisteredIdBtn.onclick = () => {
           if (registryIdInput) {
-            registryIdInput.value = data.documentID;
-            // switch to verify mode to encourage verification
+            registryIdInput.value = data.documentID || "";
             setActiveAction("verify");
             showToast("Registered ID set in verify input.", "info");
           }
@@ -244,9 +256,11 @@ registerBtn && (registerBtn.onclick = async () => {
       await loadStats();
       await loadHistory();
     } else {
-      resultDiv.className = "result-card result-fail";
-      resultDiv.innerHTML =
-        `❌ Registration failed!<br>${data.error || "Unknown error"}`;
+      if (resultDiv) {
+        resultDiv.className = "result-card result-fail";
+        resultDiv.innerHTML =
+          `❌ Registration failed!<br>${data.error || "Unknown error"}`;
+      }
       setBcStatus(false, null);
       showToast(`Registration failed: ${data.error || "Unknown error"}`, "error");
       await loadHistory();
@@ -254,8 +268,10 @@ registerBtn && (registerBtn.onclick = async () => {
   } catch (err) {
     console.error(err);
     setLoading(false);
-    resultDiv.className = "result-card result-fail";
-    resultDiv.innerHTML = "⚠️ Server error while registering!";
+    if (resultDiv) {
+      resultDiv.className = "result-card result-fail";
+      resultDiv.innerHTML = "⚠️ Server error while registering!";
+    }
     setBcStatus(false, null);
     showToast("Server error while registering.", "error");
     await loadHistory();
@@ -264,7 +280,6 @@ registerBtn && (registerBtn.onclick = async () => {
 
 /* ---------------------------
    VERIFY DOCUMENT
-   - sends optional documentID (from registryIdInput) and interprets server
 --------------------------- */
 verifyBtn && (verifyBtn.onclick = async () => {
   if (!uploadedFile) {
@@ -272,22 +287,24 @@ verifyBtn && (verifyBtn.onclick = async () => {
     return;
   }
 
-  const computedHash = (hashValue.textContent || "").trim();
+  const computedHash = (hashValue && hashValue.textContent || "").trim();
   if (!computedHash || computedHash === "Computing...") {
     showToast("Hash not ready yet. Wait a moment.", "warning");
     return;
   }
 
   setLoading(true, "Verifying document against registry...");
-  resultDiv.className = "result-card";
-  resultDiv.innerHTML = "⏳ Verifying against blockchain registry...";
+  if (resultDiv) {
+    resultDiv.className = "result-card";
+    resultDiv.innerHTML = "⏳ Verifying against blockchain registry...";
+  }
 
   const formData = new FormData();
   formData.append("file", uploadedFile);
   formData.append("documentID", registryIdInput ? registryIdInput.value.trim() : "");
 
   try {
-    const res = await fetch("/verify", {
+    const res = await api("/verify", {
       method: "POST",
       body: formData
     });
@@ -297,11 +314,13 @@ verifyBtn && (verifyBtn.onclick = async () => {
 
     if (data && data.verified) {
       setLoading(false);
-      resultDiv.className = "result-card result-success";
-      let html = `✅ Verified!<br>Hash: ${data.computed_hash || computedHash}`;
-      if (data.documentID) html += `<br>ID: ${data.documentID}`;
-      if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
-      resultDiv.innerHTML = html;
+      if (resultDiv) {
+        resultDiv.className = "result-card result-success";
+        let html = `✅ Verified!<br>Hash: ${data.computed_hash || computedHash}`;
+        if (data.documentID) html += `<br>ID: ${data.documentID}`;
+        if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
+        resultDiv.innerHTML = html;
+      }
       setBcStatus(Boolean(data.blockchain_tx), data.blockchain_tx || null);
       showToast("Document verified successfully.", "success");
       await loadStats();
@@ -313,8 +332,10 @@ verifyBtn && (verifyBtn.onclick = async () => {
       const reason = String(data.reason).toLowerCase();
       if (reason.includes("not") && (reason.includes("register") || reason.includes("found") || reason.includes("not on") || reason.includes("not_registered"))) {
         setLoading(false);
-        resultDiv.className = "result-card result-fail";
-        resultDiv.innerHTML = `❌ Not registered — hash not found in registry.<br>Computed: ${computedHash}`;
+        if (resultDiv) {
+          resultDiv.className = "result-card result-fail";
+          resultDiv.innerHTML = `❌ Not registered — hash not found in registry.<br>Computed: ${computedHash}`;
+        }
         setBcStatus(false, null);
         showToast("Verification result: Not registered.", "error");
         await loadStats();
@@ -323,12 +344,14 @@ verifyBtn && (verifyBtn.onclick = async () => {
       }
       if (reason.includes("tamper") || reason.includes("mismatch") || reason.includes("hash mismatch")) {
         setLoading(false);
-        resultDiv.className = "result-card result-fail";
-        let html = `⚠️ Tampered — document hash does not match stored record.<br>Computed: ${computedHash}`;
-        if (data.stored_hash) html += `<br>Stored: ${data.stored_hash}`;
-        if (data.documentID) html += `<br>ID: ${data.documentID}`;
-        if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
-        resultDiv.innerHTML = html;
+        if (resultDiv) {
+          resultDiv.className = "result-card result-fail";
+          let html = `⚠️ Tampered — document hash does not match stored record.<br>Computed: ${computedHash}`;
+          if (data.stored_hash) html += `<br>Stored: ${data.stored_hash}`;
+          if (data.documentID) html += `<br>ID: ${data.documentID}`;
+          if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
+          resultDiv.innerHTML = html;
+        }
         setBcStatus(Boolean(data.blockchain_tx), data.blockchain_tx || null);
         showToast("Verification result: Tampered.", "error");
         await loadStats();
@@ -342,11 +365,13 @@ verifyBtn && (verifyBtn.onclick = async () => {
       const comp = computedHash.replace(/^0x/, "").toLowerCase();
       if (stored && stored !== comp) {
         setLoading(false);
-        resultDiv.className = "result-card result-fail";
-        let html = `⚠️ Tampered — document hash does not match stored record.<br>Computed: ${computedHash}<br>Stored: ${data.stored_hash}`;
-        if (data.documentID) html += `<br>ID: ${data.documentID}`;
-        if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
-        resultDiv.innerHTML = html;
+        if (resultDiv) {
+          resultDiv.className = "result-card result-fail";
+          let html = `⚠️ Tampered — document hash does not match stored record.<br>Computed: ${computedHash}<br>Stored: ${data.stored_hash}`;
+          if (data.documentID) html += `<br>ID: ${data.documentID}`;
+          if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
+          resultDiv.innerHTML = html;
+        }
         setBcStatus(Boolean(data.blockchain_tx), data.blockchain_tx || null);
         showToast("Verification result: Tampered.", "error");
         await loadStats();
@@ -355,11 +380,13 @@ verifyBtn && (verifyBtn.onclick = async () => {
       }
       if (stored && stored === comp) {
         setLoading(false);
-        resultDiv.className = "result-card result-success";
-        let html = `✅ Verified (by stored hash)!<br>Hash: ${computedHash}`;
-        if (data.documentID) html += `<br>ID: ${data.documentID}`;
-        if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
-        resultDiv.innerHTML = html;
+        if (resultDiv) {
+          resultDiv.className = "result-card result-success";
+          let html = `✅ Verified (by stored hash)!<br>Hash: ${computedHash}`;
+          if (data.documentID) html += `<br>ID: ${data.documentID}`;
+          if (data.blockchain_tx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${data.blockchain_tx}" target="_blank" rel="noopener noreferrer">${data.blockchain_tx}</a>`;
+          resultDiv.innerHTML = html;
+        }
         setBcStatus(Boolean(data.blockchain_tx), data.blockchain_tx || null);
         showToast("Document verified successfully.", "success");
         await loadStats();
@@ -370,7 +397,7 @@ verifyBtn && (verifyBtn.onclick = async () => {
 
     // fallback: client-side registry lookup
     try {
-      const listRes = await fetch("/api/documents");
+      const listRes = await api("/api/documents");
       const docs = await listRes.json();
       const match = Array.isArray(docs) && docs.find(d => {
         const fh = (d.fileHash || "").toString().replace(/^0x/, "").toLowerCase();
@@ -379,10 +406,12 @@ verifyBtn && (verifyBtn.onclick = async () => {
 
       if (match) {
         setLoading(false);
-        resultDiv.className = "result-card result-success";
-        let html = `✅ Verified (found in registry)!<br>ID: ${match.documentID}<br>Hash: ${match.fileHash || computedHash}`;
-        if (match.blockchainTx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${match.blockchainTx}" target="_blank" rel="noopener noreferrer">${match.blockchainTx}</a>`;
-        resultDiv.innerHTML = html;
+        if (resultDiv) {
+          resultDiv.className = "result-card result-success";
+          let html = `✅ Verified (found in registry)!<br>ID: ${match.documentID}<br>Hash: ${match.fileHash || computedHash}`;
+          if (match.blockchainTx) html += `<br>Tx: <a class="tx-link" href="https://sepolia.etherscan.io/tx/${match.blockchainTx}" target="_blank" rel="noopener noreferrer">${match.blockchainTx}</a>`;
+          resultDiv.innerHTML = html;
+        }
         setBcStatus(Boolean(match.blockchainTx), match.blockchainTx || null);
         showToast("Document verified (client registry lookup).", "success");
         await loadStats();
@@ -390,8 +419,10 @@ verifyBtn && (verifyBtn.onclick = async () => {
         return;
       } else {
         setLoading(false);
-        resultDiv.className = "result-card result-fail";
-        resultDiv.innerHTML = `❌ Not registered — computed hash not found in registry.<br>Computed: ${computedHash}`;
+        if (resultDiv) {
+          resultDiv.className = "result-card result-fail";
+          resultDiv.innerHTML = `❌ Not registered — computed hash not found in registry.<br>Computed: ${computedHash}`;
+        }
         setBcStatus(false, null);
         showToast("Verification result: Not registered.", "error");
         await loadStats();
@@ -401,11 +432,12 @@ verifyBtn && (verifyBtn.onclick = async () => {
     } catch (lookupErr) {
       console.warn("Fallback registry lookup failed", lookupErr);
       setLoading(false);
-      resultDiv.className = "result-card result-fail";
-      resultDiv.innerHTML = `❌ Verification Failed!<br>${data?.reason || "Hash mismatch or not on chain"}`;
+      if (resultDiv) {
+        resultDiv.className = "result-card result-fail";
+        resultDiv.innerHTML = `❌ Verification Failed!<br>${data?.reason || "Hash mismatch or not on chain"}`;
+      }
       setBcStatus(false, null);
       showToast(`Verification failed: ${data?.reason || "Unknown"}`, "error");
-      await loadStats();
       await loadHistory();
       return;
     }
@@ -413,8 +445,10 @@ verifyBtn && (verifyBtn.onclick = async () => {
   } catch (err) {
     console.error(err);
     setLoading(false);
-    resultDiv.className = "result-card result-fail";
-    resultDiv.innerHTML = "⚠️ Server error!";
+    if (resultDiv) {
+      resultDiv.className = "result-card result-fail";
+      resultDiv.innerHTML = "⚠️ Server error!";
+    }
     setBcStatus(false, null);
     showToast("Server error while verifying.", "error");
     await loadHistory();
@@ -423,7 +457,7 @@ verifyBtn && (verifyBtn.onclick = async () => {
 
 // COPY HASH
 copyHashBtn && (copyHashBtn.onclick = () => {
-  if (hashValue.textContent !== "N/A" && hashValue.textContent !== "Computing...") {
+  if (hashValue && hashValue.textContent !== "N/A" && hashValue.textContent !== "Computing...") {
     navigator.clipboard.writeText(hashValue.textContent)
       .then(() => showToast("Hash copied to clipboard.", "success"))
       .catch(() => showToast("Failed to copy hash.", "error"));
@@ -433,19 +467,19 @@ copyHashBtn && (copyHashBtn.onclick = () => {
 // PREVIEW MODAL
 filePreview && (filePreview.onclick = () => {
   if (!uploadedFile) return;
-  modalContent.innerHTML = "";
+  modalContent && (modalContent.innerHTML = "");
 
   if (uploadedFile.type.startsWith("image/")) {
     const img = document.createElement("img");
     img.src = URL.createObjectURL(uploadedFile);
-    modalContent.appendChild(img);
+    modalContent && modalContent.appendChild(img);
   } else if (uploadedFile.type === "application/pdf") {
     const iframe = document.createElement("iframe");
     iframe.src = URL.createObjectURL(uploadedFile);
-    modalContent.appendChild(iframe);
+    modalContent && modalContent.appendChild(iframe);
   }
 
-  previewModal.style.display = "flex";
+  if (previewModal) previewModal.style.display = "flex";
 });
 modalClose && (modalClose.onclick = () => previewModal.style.display = "none");
 window.onclick = e => { if (e.target === previewModal) previewModal.style.display = "none"; };
@@ -455,42 +489,38 @@ themeToggle && (themeToggle.onclick = () => {
   document.body.classList.toggle("light");
   document.body.classList.toggle("dark");
   const isDark = document.body.classList.contains("dark");
+  // use lucide.replace() to re-render icons
+  if (window.lucide && typeof window.lucide.replace === "function") {
+    window.lucide.replace();
+  }
   themeToggle.innerHTML = `<i data-lucide="${isDark ? "sun" : "moon"}"></i> Theme`;
-  lucide.createIcons();
 });
 
 /* ---------------------------
    TABS: single-tab-per-route support
-   - hide registryIdRow during register
-   - show registryIdRow during verify
 --------------------------- */
 function setActiveAction(target) {
   actionTabs.forEach(tab => {
     tab.classList.toggle("active", tab.dataset.target === target);
   });
 
-  // clear previous result when switching
   if (resultDiv) {
     resultDiv.innerHTML = "";
     resultDiv.className = "result-card";
   }
 
   if (target === "register") {
-    registerBtn.style.display = "inline-flex";
-    verifyBtn.style.display = "none";
-    // hide registry id input area when registering
+    if (registerBtn) registerBtn.style.display = "inline-flex";
+    if (verifyBtn) verifyBtn.style.display = "none";
     if (registryIdRow) registryIdRow.style.display = "none";
-    // hide registeredIdRow until a new registration occurs
     if (registeredIdRow) registeredIdRow.style.display = "none";
   } else {
-    registerBtn.style.display = "none";
-    verifyBtn.style.display = "inline-flex";
+    if (registerBtn) registerBtn.style.display = "none";
+    if (verifyBtn) verifyBtn.style.display = "inline-flex";
     if (registryIdRow) registryIdRow.style.display = "block";
-    // leave registeredIdRow as-is (persist if shown)
   }
 }
 
-// if there's only 1 tab per-route, use it; otherwise wire click handlers
 if (actionTabs.length === 1) {
   setActiveAction(actionTabs[0].dataset.target);
 } else {
@@ -499,7 +529,6 @@ if (actionTabs.length === 1) {
   });
 }
 
-// fallback
 setActiveAction(defaultMode);
 
 /* ---------------------------
@@ -508,7 +537,7 @@ setActiveAction(defaultMode);
 async function loadRegistry() {
   if (!registryTableBody) return;
   try {
-    const res = await fetch("/api/documents");
+    const res = await api("/api/documents");
     const docs = await res.json();
 
     registryTableBody.innerHTML = "";
@@ -556,7 +585,7 @@ async function loadRegistry() {
 async function loadHistory() {
   if (!historyList) return;
   try {
-    const res = await fetch("/api/history");
+    const res = await api("/api/history");
     const events = await res.json();
 
     historyList.innerHTML = "";
@@ -576,7 +605,7 @@ async function loadHistory() {
 
 async function loadStats() {
   try {
-    const res = await fetch("/api/stats");
+    const res = await api("/api/stats");
     const data = await res.json();
     if (statsTotalDocs) statsTotalDocs.textContent = data.total_documents ?? "0";
     if (statsTotalVerifications) statsTotalVerifications.textContent = data.total_verifications ?? "0";

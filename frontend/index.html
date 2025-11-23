@@ -1,91 +1,120 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>DocChain | Verification Dashboard</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<script src="https://unpkg.com/lucide@latest"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- added for mobile/responsive -->
+  <title>DocChain | Verification Dashboard</title>
+
+  <!-- stylesheet: served by Flask static (static_folder configured to frontend) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- lucide icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Expose backend base URL to the frontend JS (safe, no secrets) -->
+  <script>
+    // request.url_root includes a trailing slash, remove it for a clean base URL
+    const API_BASE_URL = "{{ request.url_root[:-1] if request.url_root.endswith('/') else request.url_root }}";
+    // Example: API_BASE_URL + '/api/upload'
+    console.debug("API_BASE_URL =", API_BASE_URL);
+    // You can override this in build-time or by setting a global variable before this script
+  </script>
 </head>
 <body class="dark" data-default-mode="{{ default_mode or 'register' }}">
-<!-- Sidebar -->
-<aside class="sidebar">
-<h2>DocChain</h2>
-<nav>
-<a class="nav-btn {% if active_page=='workflow' and default_mode=='verify' %}active{% endif %}"
-href="{{ url_for('verify_page') }}">
-<i data-lucide="file-check"></i> Verify
-</a>
-<a class="nav-btn {% if active_page=='workflow' and default_mode=='register' %}active{% endif %}"
-href="{{ url_for('register_page') }}">
-<i data-lucide="file-plus-2"></i> Register
-</a>
-<a class="nav-btn {% if active_page=='history' %}active{% endif %}"
-href="{{ url_for('history_page') }}">
-<i data-lucide="clock-4"></i> History
-</a>
-<a class="nav-btn {% if active_page=='registry' %}active{% endif %}"
-href="{{ url_for('registry_page') }}">
-<i data-lucide="database"></i> Registry
-</a>
-<button class="nav-btn" id="themeToggle">
-<i data-lucide="moon"></i> Theme
-</button>
-</nav>
-</aside>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <h2>DocChain</h2>
+    <nav>
+      <a class="nav-btn {% if active_page=='workflow' and default_mode=='verify' %}active{% endif %}"
+         href="{{ url_for('verify_page') }}">
+        <i data-lucide="file-check"></i> Verify
+      </a>
 
+      <a class="nav-btn {% if active_page=='workflow' and default_mode=='register' %}active{% endif %}"
+         href="{{ url_for('register_page') }}">
+        <i data-lucide="file-plus-2"></i> Register
+      </a>
 
-<!-- Main Content -->
-<main class="content">
-<header>
-<h1>Document Verification Dashboard</h1>
-<p>Register documents on Ethereum and verify their integrity using SHA-256 hashes.</p>
-</header>
+      <a class="nav-btn {% if active_page=='history' %}active{% endif %}"
+         href="{{ url_for('history_page') }}">
+        <i data-lucide="clock-4"></i> History
+      </a>
 
+      <a class="nav-btn {% if active_page=='registry' %}active{% endif %}"
+         href="{{ url_for('registry_page') }}">
+        <i data-lucide="database"></i> Registry
+      </a>
 
-<!-- Stats Bar -->
-<section class="stats-bar" id="statsBar">
-<div class="stat-chip">
-<span class="stat-label">Total Documents</span>
-<span class="stat-value" id="statTotalDocs">–</span>
-</div>
-<div class="stat-chip">
-<span class="stat-label">Total Verifications</span>
-<span class="stat-value" id="statTotalVerifications">–</span>
-</div>
-<div class="stat-chip">
-<span class="stat-label">Last Updated</span>
-<span class="stat-value" id="statLastUpdated">–</span>
-</div>
-</section>
+      <button class="nav-btn" id="themeToggle">
+        <i data-lucide="moon"></i> Theme
+      </button>
+    </nav>
+  </aside>
 
+  <!-- Main Content -->
+  <main class="content">
+    <header>
+      <h1>Document Verification Dashboard</h1>
+      <p>Register documents on Ethereum and verify their integrity using SHA-256 hashes.</p>
+    </header>
 
-<!-- ========== PAGE: WORKFLOW (Register / Verify) ========== -->
-<section id="page-workflow" class="page {% if active_page=='workflow' %}page-active{% endif %}">
+    <!-- Stats Bar -->
+    <section class="stats-bar" id="statsBar">
+      <div class="stat-chip">
+        <span class="stat-label">Total Documents</span>
+        <span class="stat-value" id="statTotalDocs">–</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Total Verifications</span>
+        <span class="stat-value" id="statTotalVerifications">–</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Last Updated</span>
+        <span class="stat-value" id="statLastUpdated">–</span>
+      </div>
+    </section>
 
+    <!-- ========== PAGE: WORKFLOW (Register / Verify) ========== -->
+    <section id="page-workflow" class="page {% if active_page=='workflow' %}page-active{% endif %}">
 
-<!-- Upload Card -->
-<section class="upload-card" id="uploadCard">
-<div class="upload-area" id="uploadArea">
-<i data-lucide="upload-cloud" class="upload-icon"></i>
-<p>Drag & Drop or <span id="browse">browse</span> to upload</p>
-<input type="file" id="fileInput" hidden>
-</div>
+      <!-- Upload Card -->
+      <section class="upload-card" id="uploadCard">
+        <div class="upload-area" id="uploadArea">
+          <i data-lucide="upload-cloud" class="upload-icon"></i>
+          <p>Drag &amp; Drop or <span id="browse">browse</span> to upload</p>
+          <input type="file" id="fileInput" hidden>
+        </div>
 
+        <!-- File Preview -->
+        <div class="file-preview" id="filePreview"></div>
 
-<!-- File Preview -->
-<div class="file-preview" id="filePreview"></div>
+        <!-- Generated Hash + Copy -->
+        <div class="generated-hash">
+          <label>Generated Hash:</label>
+          <span id="hashValue">N/A</span>
+          <button id="copyHashBtn" type="button">📋 Copy</button>
+        </div>
 
+        <!-- Owner input (optional) -->
+        <div class="file-owner">
+          <input type="text" id="ownerInput" placeholder="Owner name (optional)">
+        </div>
+      </section>
+      <!-- end upload-card -->
 
-<!-- Generated Hash + Copy -->
-<div class="generated-hash">
-Generated Hash:
-<span id="hashValue">N/A</span>
-<button id="copyHashBtn">📋 Copy</button>
-</div>
+    </section>
+    <!-- end page-workflow -->
 
+  </main>
 
-<!-- Owner input (optional) -->
-<div class="file-owner">
-<input type="text" id="ownerInput" placeholder="Owner name (optional)">
-</div>
+  <!-- app JS: served by Flask static -->
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+  <!-- initialize lucide icons -->
+  <script>
+    if (window.lucide) {
+      window.lucide.replace();
+    }
+  </script>
+</body>
 </html>
