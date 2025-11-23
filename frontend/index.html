@@ -1,23 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>DocChain | Verification Dashboard</title>
 
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/static/style.css" />
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
-<body class="dark" data-default-mode="register">
+<!-- IMPORTANT: Flask injects default_mode here -->
+<body class="dark" data-default-mode="{{ default_mode }}">
+
   <!-- Sidebar -->
   <aside class="sidebar">
     <h2>DocChain</h2>
     <nav>
-      <!-- Changed hrefs to real routes so Flask routes are used -->
-      <a class="nav-btn" href="/verify"> <i data-lucide="file-check"></i> Verify</a>
-      <a class="nav-btn" href="/register"> <i data-lucide="file-plus-2"></i> Register</a>
-      <a class="nav-btn" href="/history"> <i data-lucide="clock-4"></i> History</a>
-      <a class="nav-btn" href="/registry"> <i data-lucide="database"></i> Registry</a>
+      <a class="nav-btn" href="/verify"><i data-lucide="file-check"></i> Verify</a>
+      <a class="nav-btn" href="/register"><i data-lucide="file-plus-2"></i> Register</a>
+      <a class="nav-btn" href="/history"><i data-lucide="clock-4"></i> History</a>
+      <a class="nav-btn" href="/registry"><i data-lucide="database"></i> Registry</a>
       <button class="nav-btn" id="themeToggle"><i data-lucide="moon"></i> Theme</button>
     </nav>
   </aside>
@@ -48,6 +50,7 @@
     <!-- Workflow Page -->
     <section id="page-workflow" class="page page-active">
       <section class="upload-card" id="uploadCard">
+
         <!-- Upload -->
         <div class="upload-area" id="uploadArea">
           <i data-lucide="upload-cloud" class="upload-icon"></i>
@@ -70,7 +73,7 @@
           <input type="text" id="ownerInput" placeholder="Owner name (optional)" />
         </div>
 
-        <!-- Verify-by-ID input (hidden by JS until verify mode) -->
+        <!-- Verify-by-ID -->
         <div class="registry-id-row" id="registryIdRow" style="display:none;">
           <input type="text" id="registryIdInput" placeholder="Registry ID (optional — verify by ID)" />
           <small class="hint">Paste the Document ID if you want to verify a specific record.</small>
@@ -78,15 +81,17 @@
 
         <!-- Registered ID Panel -->
         <div class="registered-id-row" id="registeredIdRow" style="display:none; margin-top:10px;">
-          <div id="registeredIdText" style="font-family: ui-monospace, Menlo, Monaco, monospace; word-break: break-all;"></div>
+          <div id="registeredIdText"
+            style="font-family:ui-monospace,Menlo,Monaco,monospace;word-break:break-all;"></div>
+
           <div style="margin-top: 8px; display: flex; gap: 8px;">
             <button id="copyRegisteredIdBtn">📋 Copy Registered ID</button>
             <button id="saveRegisteredIdBtn">💾 Save for Later</button>
             <button id="useRegisteredIdBtn">🔎 Use for Verify</button>
           </div>
-          <small class="hint" style="display:block; margin-top:6px;">
-            Saved IDs are stored in your browser (localStorage).
-          </small>
+
+          <small class="hint" style="display:block; margin-top:6px;">Saved IDs are stored in your browser
+            (localStorage).</small>
         </div>
 
         <div class="file-info" id="fileInfo"></div>
@@ -95,10 +100,12 @@
           Status: <span class="badge badge-offchain">Not stored on blockchain</span>
         </div>
 
+        <!-- Tabs -->
         <div class="action-toggle">
           <button class="action-tab active" data-target="register">Register</button>
         </div>
 
+        <!-- Action Buttons -->
         <div class="action-buttons">
           <button id="registerBtn" disabled>Register Document</button>
           <button id="verifyBtn" disabled>Verify Document</button>
@@ -113,6 +120,7 @@
       <section class="result-card" id="result"></section>
     </section>
 
+    <!-- History Page -->
     <section id="page-history" class="page">
       <section class="history-card">
         <h2>Verification History</h2>
@@ -120,6 +128,7 @@
       </section>
     </section>
 
+    <!-- Registry Page -->
     <section id="page-registry" class="page">
       <section class="history-card">
         <h2>Blockchain Registry</h2>
@@ -140,57 +149,51 @@
         </div>
       </section>
     </section>
+
   </main>
 
+  <!-- Modal -->
   <div id="previewModal" class="modal">
     <span class="close">&times;</span>
     <div class="modal-content" id="modalContent"></div>
   </div>
 
+  <!-- Toasts -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Web3 first, then your app JS -->
+  <!-- Web3 -->
   <script src="https://cdn.jsdelivr.net/npm/web3@1.12.0/dist/web3.min.js"></script>
 
-  <!-- keep your app script reference -->
-  <script src="script.js"></script>
+  <!-- App Script -->
+  <script src="/static/script.js"></script>
 
-  <!-- activate lucide icons -->
+  <!-- Load Icons -->
   <script>lucide.createIcons();</script>
 
-  <!-- small helper: highlight active nav item and set default mode for script.js -->
+  <!-- Auto-highlight nav + set correct mode -->
   <script>
     (function () {
       try {
-        const path = window.location.pathname || "/";
-        // Mark nav-item active based on current path
+        const path = window.location.pathname;
+
+        // Highlight active sidebar item
         document.querySelectorAll('.sidebar .nav-btn[href]').forEach(a => {
-          if (a.getAttribute('href') === path) {
-            a.classList.add('active');
-          } else {
-            a.classList.remove('active');
-          }
+          a.classList.toggle('active', a.getAttribute('href') === path);
         });
 
-        // Set data-default-mode so script.js can pick correct mode on page load
-        // (register or verify)
+        // If Flask didn't inject mode, fallback
         const body = document.body;
-        if (path.includes('/register')) {
-          body.dataset.defaultMode = 'register';
-        } else if (path.includes('/verify')) {
-          body.dataset.defaultMode = 'verify';
-        } else if (path.includes('/history')) {
-          body.dataset.defaultMode = 'history';
-        } else if (path.includes('/registry')) {
-          body.dataset.defaultMode = 'registry';
-        } else {
-          // fallback
-          body.dataset.defaultMode = body.dataset.defaultMode || 'register';
+        if (!body.dataset.defaultMode) {
+          if (path.includes("/register")) body.dataset.defaultMode = "register";
+          else if (path.includes("/verify")) body.dataset.defaultMode = "verify";
+          else if (path.includes("/history")) body.dataset.defaultMode = "history";
+          else if (path.includes("/registry")) body.dataset.defaultMode = "registry";
         }
-      } catch (err) {
-        console.warn("Nav helper error:", err);
-      }
+
+      } catch (e) { console.warn(e); }
     })();
   </script>
+
 </body>
+
 </html>
