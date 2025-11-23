@@ -2,64 +2,62 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1"> <!-- added for mobile/responsive -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DocChain | Verification Dashboard</title>
 
-  <!-- stylesheet: served by Flask static (static_folder configured to frontend) -->
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- stylesheet: served by Flask static (frontend is configured as static root) -->
+  <!-- use root paths so Flask's static_folder="frontend" serves /style.css and /script.js -->
+  <link rel="stylesheet" href="/style.css">
 
-  <!-- lucide icons -->
+  <!-- lucide icons (CDN) -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <!-- Expose backend base URL to the frontend JS (safe, no secrets) -->
   <script>
-    // request.url_root includes a trailing slash, remove it for a clean base URL
     const API_BASE_URL = "{{ request.url_root[:-1] if request.url_root.endswith('/') else request.url_root }}";
-    // Example: API_BASE_URL + '/api/upload'
     console.debug("API_BASE_URL =", API_BASE_URL);
-    // You can override this in build-time or by setting a global variable before this script
   </script>
 </head>
 <body class="dark" data-default-mode="{{ default_mode or 'register' }}">
   <!-- Sidebar -->
-  <aside class="sidebar">
+  <aside class="sidebar" role="navigation" aria-label="Main navigation">
     <h2>DocChain</h2>
     <nav>
       <a class="nav-btn {% if active_page=='workflow' and default_mode=='verify' %}active{% endif %}"
-         href="{{ url_for('verify_page') }}">
+         href="{{ url_for('verify_page') }}" aria-label="Open Verify page">
         <i data-lucide="file-check"></i> Verify
       </a>
 
       <a class="nav-btn {% if active_page=='workflow' and default_mode=='register' %}active{% endif %}"
-         href="{{ url_for('register_page') }}">
+         href="{{ url_for('register_page') }}" aria-label="Open Register page">
         <i data-lucide="file-plus-2"></i> Register
       </a>
 
       <a class="nav-btn {% if active_page=='history' %}active{% endif %}"
-         href="{{ url_for('history_page') }}">
+         href="{{ url_for('history_page') }}" aria-label="Open History page">
         <i data-lucide="clock-4"></i> History
       </a>
 
       <a class="nav-btn {% if active_page=='registry' %}active{% endif %}"
-         href="{{ url_for('registry_page') }}">
+         href="{{ url_for('registry_page') }}" aria-label="Open Registry page">
         <i data-lucide="database"></i> Registry
       </a>
 
-      <button class="nav-btn" id="themeToggle">
+      <button class="nav-btn" id="themeToggle" aria-pressed="false" aria-label="Toggle theme">
         <i data-lucide="moon"></i> Theme
       </button>
     </nav>
   </aside>
 
   <!-- Main Content -->
-  <main class="content">
+  <main class="content" role="main">
     <header>
       <h1>Document Verification Dashboard</h1>
       <p>Register documents on Ethereum and verify their integrity using SHA-256 hashes.</p>
     </header>
 
     <!-- Stats Bar -->
-    <section class="stats-bar" id="statsBar">
+    <section class="stats-bar" id="statsBar" aria-label="Statistics">
       <div class="stat-chip">
         <span class="stat-label">Total Documents</span>
         <span class="stat-value" id="statTotalDocs">–</span>
@@ -78,26 +76,28 @@
     <section id="page-workflow" class="page {% if active_page=='workflow' %}page-active{% endif %}">
 
       <!-- Upload Card -->
-      <section class="upload-card" id="uploadCard">
-        <div class="upload-area" id="uploadArea">
-          <i data-lucide="upload-cloud" class="upload-icon"></i>
-          <p>Drag &amp; Drop or <span id="browse">browse</span> to upload</p>
-          <input type="file" id="fileInput" hidden>
+      <section class="upload-card" id="uploadCard" aria-label="Upload document">
+        <div class="upload-area" id="uploadArea" tabindex="0" role="button" aria-label="Upload area. Click or drop files to upload">
+          <i data-lucide="upload-cloud" class="upload-icon" aria-hidden="true"></i>
+          <p>Drag &amp; Drop or <span id="browse" role="button" tabindex="0" aria-label="Browse files">browse</span> to upload</p>
+          <input type="file" id="fileInput" hidden aria-hidden="true" />
         </div>
 
         <!-- File Preview -->
-        <div class="file-preview" id="filePreview"></div>
+        <div class="file-preview" id="filePreview" aria-live="polite" aria-atomic="true"></div>
 
         <!-- Generated Hash + Copy -->
-        <div class="generated-hash">
-          <label>Generated Hash:</label>
-          <span id="hashValue">N/A</span>
-          <button id="copyHashBtn" type="button">📋 Copy</button>
+        <div class="generated-hash" aria-label="Generated hash">
+          <label for="hashValue" class="visually-hidden">Generated Hash</label>
+          <span class="generated-label">Generated Hash:</span>
+          <code id="hashValue">N/A</code>
+          <button id="copyHashBtn" type="button" aria-label="Copy generated hash">📋 Copy</button>
         </div>
 
         <!-- Owner input (optional) -->
         <div class="file-owner">
-          <input type="text" id="ownerInput" placeholder="Owner name (optional)">
+          <label for="ownerInput" class="visually-hidden">Owner name (optional)</label>
+          <input type="text" id="ownerInput" placeholder="Owner name (optional)" aria-label="Owner name (optional)">
         </div>
       </section>
       <!-- end upload-card -->
@@ -107,13 +107,13 @@
 
   </main>
 
-  <!-- app JS: served by Flask static -->
-  <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <!-- app JS: served by Flask static root -->
+  <script src="/script.js"></script>
 
   <!-- initialize lucide icons (backwards-compatible + waits for DOM) -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-      // Prefer the modern API (createIcons), fallback to replace() if available.
+      // Prefer the modern API (createIcons), fallback to replace()
       if (window.lucide) {
         if (typeof lucide.createIcons === "function") {
           try { lucide.createIcons(); } catch (e) { console.warn("lucide.createIcons failed", e); }
