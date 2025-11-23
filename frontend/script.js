@@ -1,5 +1,8 @@
 // ---------------- CONFIG ----------------
-const BACKEND_URL = "https://digital-document-verification-system.onrender.com"; 
+const BACKEND_URL = window.location.hostname === "localhost" 
+  ? "http://127.0.0.1:5000" 
+  : "https://digital-document-verification-system.onrender.com";
+ 
 // <-- If you redeploy backend with a different URL, update BACKEND_URL here.
 
 // ---------------- DOM refs (kept from your original) ----------------

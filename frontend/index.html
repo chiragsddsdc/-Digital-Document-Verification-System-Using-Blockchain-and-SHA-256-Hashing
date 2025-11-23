@@ -13,10 +13,11 @@
   <aside class="sidebar">
     <h2>DocChain</h2>
     <nav>
-      <a class="nav-btn" href="#"> <i data-lucide="file-check"></i> Verify</a>
-      <a class="nav-btn" href="#"> <i data-lucide="file-plus-2"></i> Register</a>
-      <a class="nav-btn" href="#"> <i data-lucide="clock-4"></i> History</a>
-      <a class="nav-btn" href="#"> <i data-lucide="database"></i> Registry</a>
+      <!-- Changed hrefs to real routes so Flask routes are used -->
+      <a class="nav-btn" href="/verify"> <i data-lucide="file-check"></i> Verify</a>
+      <a class="nav-btn" href="/register"> <i data-lucide="file-plus-2"></i> Register</a>
+      <a class="nav-btn" href="/history"> <i data-lucide="clock-4"></i> History</a>
+      <a class="nav-btn" href="/registry"> <i data-lucide="database"></i> Registry</a>
       <button class="nav-btn" id="themeToggle"><i data-lucide="moon"></i> Theme</button>
     </nav>
   </aside>
@@ -150,7 +151,46 @@
 
   <!-- Web3 first, then your app JS -->
   <script src="https://cdn.jsdelivr.net/npm/web3@1.12.0/dist/web3.min.js"></script>
+
+  <!-- keep your app script reference -->
   <script src="script.js"></script>
+
+  <!-- activate lucide icons -->
   <script>lucide.createIcons();</script>
+
+  <!-- small helper: highlight active nav item and set default mode for script.js -->
+  <script>
+    (function () {
+      try {
+        const path = window.location.pathname || "/";
+        // Mark nav-item active based on current path
+        document.querySelectorAll('.sidebar .nav-btn[href]').forEach(a => {
+          if (a.getAttribute('href') === path) {
+            a.classList.add('active');
+          } else {
+            a.classList.remove('active');
+          }
+        });
+
+        // Set data-default-mode so script.js can pick correct mode on page load
+        // (register or verify)
+        const body = document.body;
+        if (path.includes('/register')) {
+          body.dataset.defaultMode = 'register';
+        } else if (path.includes('/verify')) {
+          body.dataset.defaultMode = 'verify';
+        } else if (path.includes('/history')) {
+          body.dataset.defaultMode = 'history';
+        } else if (path.includes('/registry')) {
+          body.dataset.defaultMode = 'registry';
+        } else {
+          // fallback
+          body.dataset.defaultMode = body.dataset.defaultMode || 'register';
+        }
+      } catch (err) {
+        console.warn("Nav helper error:", err);
+      }
+    })();
+  </script>
 </body>
 </html>
