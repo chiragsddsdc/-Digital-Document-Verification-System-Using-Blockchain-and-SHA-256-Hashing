@@ -56,23 +56,8 @@ logger = logging.getLogger(__name__)
 # ------------------------------
 @app.after_request
 def add_security_headers(response):
-    """
-    Add security headers to allow loading of:
-    - local static files (self)
-    - lucide icons from unpkg
-    - inline styles/scripts required by the UI
-    This configuration is intentionally permissive to allow your UX to function.
-    Tighten later as needed.
-    """
-    # Prevent MIME sniffing
     response.headers["X-Content-Type-Options"] = "nosniff"
 
-    # Content Security Policy:
-    # - allow scripts from self and unpkg (for lucide icons)
-    # - allow inline styles (many themes use inline styles); consider removing 'unsafe-inline' later
-    # - allow fonts from unpkg and data:
-    # - img data/blob for previews
-    # - connect-src self (API calls) — Render sets proper domain
     csp = (
         "default-src 'self'; "
         "script-src 'self' https://unpkg.com 'unsafe-inline'; "
@@ -83,10 +68,6 @@ def add_security_headers(response):
         "frame-src 'self' blob:; "
     )
     response.headers["Content-Security-Policy"] = csp
-
-    # Optional additional headers (recommended)
-    response.headers.setdefault("Referrer-Policy", "no-referrer-when-downgrade")
-    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     return response
 
 # ------------------------------

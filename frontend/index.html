@@ -110,11 +110,22 @@
   <!-- app JS: served by Flask static -->
   <script src="{{ url_for('static', filename='script.js') }}"></script>
 
-  <!-- initialize lucide icons -->
+  <!-- initialize lucide icons (backwards-compatible + waits for DOM) -->
   <script>
-    if (window.lucide) {
-      window.lucide.replace();
-    }
+    document.addEventListener("DOMContentLoaded", () => {
+      // Prefer the modern API (createIcons), fallback to replace() if available.
+      if (window.lucide) {
+        if (typeof lucide.createIcons === "function") {
+          try { lucide.createIcons(); } catch (e) { console.warn("lucide.createIcons failed", e); }
+        } else if (typeof lucide.replace === "function") {
+          try { lucide.replace(); } catch (e) { console.warn("lucide.replace failed", e); }
+        } else {
+          console.warn("lucide loaded but no known init function found");
+        }
+      } else {
+        console.warn("lucide not loaded");
+      }
+    });
   </script>
 </body>
 </html>
