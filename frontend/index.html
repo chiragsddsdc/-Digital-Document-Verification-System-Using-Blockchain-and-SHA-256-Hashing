@@ -3,71 +3,144 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DocChain | Verification Dashboard</title>
+  <title>DocChain | Blockchain Document Verification</title>
 
-  <!-- stylesheet: served by Flask static (frontend is configured as static root) -->
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+
+  <!-- Stylesheet: served by Flask static -->
   <link rel="stylesheet" href="/style.css">
 
-  <!-- lucide icons (CDN) -->
+  <!-- Lucide Icons (CDN) -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- Expose backend base URL to the frontend JS -->
+  <!-- Ethers.js for Web3 Integration -->
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+
+  <!-- Expose backend base URL to frontend JS -->
   <script>
     const API_BASE_URL = "{{ request.url_root[:-1] if request.url_root.endswith('/') else request.url_root }}";
-    console.debug("API_BASE_URL =", API_BASE_URL);
+    console.info("🔗 API_BASE_URL =", API_BASE_URL);
   </script>
+
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Blockchain-powered document verification system using Ethereum and SHA-256 hashing">
+  <meta name="keywords" content="blockchain, document verification, ethereum, SHA-256, smart contract">
+  <meta name="author" content="DocChain">
+  
+  <!-- Open Graph / Social Media -->
+  <meta property="og:title" content="DocChain - Blockchain Document Verification">
+  <meta property="og:description" content="Secure document verification using Ethereum blockchain and cryptographic hashing">
+  <meta property="og:type" content="website">
 </head>
-<body class="dark" data-default-mode="{{ default_mode or 'register' }}">
-  <!-- Sidebar -->
+<body class="dark" data-default-mode="{{ default_mode or 'verify' }}">
+  
+  <!-- Sidebar Navigation -->
   <aside class="sidebar" role="navigation" aria-label="Main navigation">
-    <h2>DocChain</h2>
+    <div class="sidebar-header">
+      <h2>
+        <span class="logo-icon">🔗</span>
+        DocChain
+      </h2>
+      <p class="sidebar-tagline">Blockchain Verification</p>
+    </div>
+
     <nav>
       <a class="nav-btn {% if active_page=='workflow' and default_mode=='verify' %}active{% endif %}"
-         href="{{ url_for('verify_page') }}" aria-label="Open Verify page">
-        <i data-lucide="file-check"></i> Verify
+         href="{{ url_for('verify_page') }}" 
+         aria-label="Open Verify page"
+         aria-current="{% if active_page=='workflow' and default_mode=='verify' %}page{% else %}false{% endif %}">
+        <i data-lucide="file-check"></i> 
+        <span>Verify</span>
       </a>
 
       <a class="nav-btn {% if active_page=='workflow' and default_mode=='register' %}active{% endif %}"
-         href="{{ url_for('register_page') }}" aria-label="Open Register page">
-        <i data-lucide="file-plus-2"></i> Register
+         href="{{ url_for('register_page') }}" 
+         aria-label="Open Register page"
+         aria-current="{% if active_page=='workflow' and default_mode=='register' %}page{% else %}false{% endif %}">
+        <i data-lucide="file-plus-2"></i> 
+        <span>Register</span>
       </a>
 
       <a class="nav-btn {% if active_page=='history' %}active{% endif %}"
-         href="{{ url_for('history_page') }}" aria-label="Open History page">
-        <i data-lucide="clock-4"></i> History
+         href="{{ url_for('history_page') }}" 
+         aria-label="Open History page"
+         aria-current="{% if active_page=='history' %}page{% else %}false{% endif %}">
+        <i data-lucide="clock-4"></i> 
+        <span>History</span>
       </a>
 
       <a class="nav-btn {% if active_page=='registry' %}active{% endif %}"
-         href="{{ url_for('registry_page') }}" aria-label="Open Registry page">
-        <i data-lucide="database"></i> Registry
+         href="{{ url_for('registry_page') }}" 
+         aria-label="Open Registry page"
+         aria-current="{% if active_page=='registry' %}page{% else %}false{% endif %}">
+        <i data-lucide="database"></i> 
+        <span>Registry</span>
       </a>
 
-      <button class="nav-btn" id="themeToggle" aria-pressed="false" aria-label="Toggle theme">
-        <i data-lucide="moon"></i> Theme
+      <button class="nav-btn" id="themeToggle" aria-pressed="false" aria-label="Toggle dark/light theme">
+        <i data-lucide="moon"></i> 
+        <span>Theme</span>
       </button>
     </nav>
+
+    <!-- MetaMask Connection Status -->
+    <div class="sidebar-footer">
+      <div id="walletStatus" class="wallet-status">
+        <button id="connectWalletBtn" class="btn-connect-wallet">
+          <i data-lucide="wallet"></i>
+          <span>Connect Wallet</span>
+        </button>
+        <div id="walletConnected" class="wallet-connected" style="display: none;">
+          <i data-lucide="check-circle"></i>
+          <span id="walletAddress">Not Connected</span>
+        </div>
+      </div>
+    </div>
   </aside>
 
   <!-- Main Content -->
   <main class="content" role="main">
     <header>
       <h1>Document Verification Dashboard</h1>
-      <p>Register documents on Ethereum and verify their integrity using SHA-256 hashes.</p>
+      <p>Register documents on Ethereum Sepolia testnet and verify their integrity using SHA-256 hashing.</p>
+      
+      <!-- Network Status Badge -->
+      <div class="network-badge" id="networkBadge">
+        <i data-lucide="globe"></i>
+        <span id="networkName">Sepolia Testnet</span>
+      </div>
     </header>
 
     <!-- Stats Bar -->
-    <section class="stats-bar" id="statsBar" aria-label="Statistics">
+    <section class="stats-bar" id="statsBar" aria-label="System statistics">
       <div class="stat-chip">
-        <span class="stat-label">Total Documents</span>
-        <span class="stat-value" id="statTotalDocs">–</span>
+        <i data-lucide="file-text" class="stat-icon"></i>
+        <div class="stat-content">
+          <span class="stat-label">Total Documents</span>
+          <span class="stat-value" id="statTotalDocs">–</span>
+        </div>
       </div>
       <div class="stat-chip">
-        <span class="stat-label">Total Verifications</span>
-        <span class="stat-value" id="statTotalVerifications">–</span>
+        <i data-lucide="shield-check" class="stat-icon"></i>
+        <div class="stat-content">
+          <span class="stat-label">Total Verifications</span>
+          <span class="stat-value" id="statTotalVerifications">–</span>
+        </div>
       </div>
       <div class="stat-chip">
-        <span class="stat-label">Last Updated</span>
-        <span class="stat-value" id="statLastUpdated">–</span>
+        <i data-lucide="check-circle" class="stat-icon"></i>
+        <div class="stat-content">
+          <span class="stat-label">Registered</span>
+          <span class="stat-value" id="statRegistered">–</span>
+        </div>
+      </div>
+      <div class="stat-chip">
+        <i data-lucide="clock" class="stat-icon"></i>
+        <div class="stat-content">
+          <span class="stat-label">Last Updated</span>
+          <span class="stat-value" id="statLastUpdated">–</span>
+        </div>
       </div>
     </section>
 
@@ -75,73 +148,174 @@
     <section id="page-workflow" class="page {% if active_page=='workflow' %}page-active{% endif %}">
       
       <!-- Action Tabs (Register / Verify) -->
-      <div class="action-tabs">
-        <button class="action-tab" data-target="register">
-          <i data-lucide="file-plus-2"></i> Register
+      <div class="action-tabs" role="tablist" aria-label="Document actions">
+        <button class="action-tab" 
+                data-target="register" 
+                role="tab" 
+                aria-selected="false" 
+                aria-controls="register-panel"
+                id="tab-register">
+          <i data-lucide="file-plus-2"></i> 
+          <span>Register</span>
         </button>
-        <button class="action-tab" data-target="verify">
-          <i data-lucide="file-check"></i> Verify
+        <button class="action-tab" 
+                data-target="verify" 
+                role="tab" 
+                aria-selected="false" 
+                aria-controls="verify-panel"
+                id="tab-verify">
+          <i data-lucide="file-check"></i> 
+          <span>Verify</span>
         </button>
       </div>
 
       <!-- Upload Card -->
-      <section class="upload-card" id="uploadCard" aria-label="Upload document">
-        <div class="upload-area" id="uploadArea" tabindex="0" role="button" aria-label="Upload area. Click or drop files to upload">
+      <section class="upload-card" 
+               id="uploadCard" 
+               role="tabpanel" 
+               aria-labelledby="tab-register tab-verify">
+        
+        <!-- Upload Area -->
+        <div class="upload-area" 
+             id="uploadArea" 
+             tabindex="0" 
+             role="button" 
+             aria-label="Upload area. Click or drag and drop files to upload">
           <i data-lucide="upload-cloud" class="upload-icon" aria-hidden="true"></i>
-          <p>Drag &amp; Drop or <span id="browse" role="button" tabindex="0" aria-label="Browse files">browse</span> to upload</p>
-          <input type="file" id="fileInput" hidden aria-hidden="true" />
+          <p>
+            Drag &amp; Drop or 
+            <span id="browse" role="button" tabindex="0" aria-label="Browse files">browse</span> 
+            to upload
+          </p>
+          <p class="upload-hint">Supported: PDF, PNG, JPG, TXT, DOC, DOCX (max 16 MB)</p>
+          <input type="file" 
+                 id="fileInput" 
+                 hidden 
+                 aria-hidden="true"
+                 accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx,.zip" />
         </div>
 
         <!-- File Info Display -->
-        <div id="fileInfo" class="file-info"></div>
+        <div id="fileInfo" class="file-info" role="status" aria-live="polite"></div>
 
         <!-- File Preview -->
-        <div class="file-preview" id="filePreview" aria-live="polite" aria-atomic="true"></div>
+        <div class="file-preview" 
+             id="filePreview" 
+             role="region" 
+             aria-label="File preview"
+             aria-live="polite" 
+             aria-atomic="true"></div>
 
         <!-- Generated Hash + Copy -->
-        <div class="generated-hash" aria-label="Generated hash">
-          <label for="hashValue" class="visually-hidden">Generated Hash</label>
-          <span class="generated-label">Generated Hash:</span>
-          <code id="hashValue">N/A</code>
-          <button id="copyHashBtn" type="button" aria-label="Copy generated hash">📋 Copy</button>
+        <div class="generated-hash" aria-label="Generated document hash">
+          <div class="hash-header">
+            <label for="hashValue">
+              <i data-lucide="hash"></i>
+              Generated Hash (SHA-256):
+            </label>
+          </div>
+          <div class="hash-content">
+            <code id="hashValue" aria-label="Document hash value">N/A</code>
+            <button id="copyHashBtn" 
+                    type="button" 
+                    class="btn-icon"
+                    aria-label="Copy hash to clipboard"
+                    title="Copy hash">
+              <i data-lucide="copy"></i>
+            </button>
+          </div>
         </div>
 
-        <!-- Owner input (for registration) -->
-        <div class="file-owner">
-          <label for="ownerInput" class="visually-hidden">Owner name (optional)</label>
-          <input type="text" id="ownerInput" placeholder="Owner name (optional)" aria-label="Owner name (optional)">
+        <!-- Owner Input (for registration) -->
+        <div class="form-group file-owner" id="ownerSection">
+          <label for="ownerInput">
+            <i data-lucide="user"></i>
+            Owner Name (Optional)
+          </label>
+          <input type="text" 
+                 id="ownerInput" 
+                 placeholder="Enter owner name" 
+                 aria-label="Owner name (optional)"
+                 maxlength="50"
+                 pattern="[a-zA-Z0-9\s\-_]+"
+                 title="Only letters, numbers, spaces, hyphens, and underscores allowed">
         </div>
 
-        <!-- Verify by ID input (shown in verify mode) -->
-        <div id="registryIdRow" class="registry-id-row" style="display: none;">
-          <label for="registryIdInput">Document ID (optional):</label>
-          <input type="text" id="registryIdInput" placeholder="Enter document ID to verify">
+        <!-- Verify by ID Input (shown in verify mode) -->
+        <div id="registryIdRow" class="form-group registry-id-row" style="display: none;">
+          <label for="registryIdInput">
+            <i data-lucide="key"></i>
+            Document ID (Optional)
+          </label>
+          <input type="text" 
+                 id="registryIdInput" 
+                 placeholder="Enter document ID to verify"
+                 aria-label="Document ID for verification"
+                 pattern="[a-f0-9\-]{36}"
+                 title="Valid UUID format required">
+          <p class="input-hint">Leave empty to search by file hash</p>
         </div>
 
-        <!-- Registered ID display (shown after registration) -->
+        <!-- Registered ID Display (shown after registration) -->
         <div id="registeredIdRow" class="registered-id-row" style="display: none;">
-          <label>Registered Document ID:</label>
-          <code id="registeredIdText"></code>
-          <button id="copyRegisteredIdBtn" type="button">📋 Copy</button>
-          <button id="saveRegisteredIdBtn" type="button">💾 Save</button>
-          <button id="useRegisteredIdBtn" type="button">✓ Use for Verify</button>
+          <label>
+            <i data-lucide="check-circle"></i>
+            Registered Document ID:
+          </label>
+          <div class="id-actions">
+            <code id="registeredIdText" aria-label="Registered document ID"></code>
+            <button id="copyRegisteredIdBtn" 
+                    type="button" 
+                    class="btn-icon"
+                    aria-label="Copy document ID"
+                    title="Copy ID">
+              <i data-lucide="copy"></i>
+            </button>
+            <button id="saveRegisteredIdBtn" 
+                    type="button" 
+                    class="btn-icon"
+                    aria-label="Save document ID locally"
+                    title="Save ID">
+              <i data-lucide="save"></i>
+            </button>
+            <button id="useRegisteredIdBtn" 
+                    type="button" 
+                    class="btn-secondary btn-sm"
+                    aria-label="Use this ID for verification">
+              <i data-lucide="arrow-right"></i>
+              Use for Verify
+            </button>
+          </div>
         </div>
 
         <!-- Blockchain Status -->
-        <div id="bcStatus" class="bc-status"></div>
+        <div id="bcStatus" class="bc-status" role="status" aria-live="polite"></div>
 
         <!-- Action Buttons -->
-        <div class="action-buttons">
-          <button id="registerBtn" class="btn btn-primary">
-            <i data-lucide="upload"></i> Register Document
+        <div class="action-buttons" role="group" aria-label="Document actions">
+          <button id="registerBtn" 
+                  class="btn btn-primary" 
+                  type="button"
+                  aria-label="Register document on blockchain">
+            <i data-lucide="upload"></i> 
+            <span>Register on Blockchain</span>
           </button>
-          <button id="verifyBtn" class="btn btn-secondary" style="display: none;">
-            <i data-lucide="shield-check"></i> Verify Document
+          <button id="verifyBtn" 
+                  class="btn btn-secondary" 
+                  type="button"
+                  style="display: none;"
+                  aria-label="Verify document integrity">
+            <i data-lucide="shield-check"></i> 
+            <span>Verify Document</span>
           </button>
         </div>
 
         <!-- Result Display -->
-        <div id="result" class="result-card"></div>
+        <div id="result" 
+             class="result-card" 
+             role="region" 
+             aria-label="Operation result"
+             aria-live="polite"></div>
       </section>
       <!-- end upload-card -->
 
@@ -150,28 +324,57 @@
 
     <!-- ========== PAGE: HISTORY ========== -->
     <section id="page-history" class="page {% if active_page=='history' %}page-active{% endif %}">
-      <h2>Verification History</h2>
-      <div id="historyList" class="history-list">
-        <p>Loading history...</p>
+      <div class="page-header">
+        <h2>
+          <i data-lucide="clock-4"></i>
+          Verification History
+        </h2>
+        <button id="refreshHistoryBtn" 
+                class="btn-icon" 
+                aria-label="Refresh history"
+                title="Refresh">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </div>
+      <div id="historyList" 
+           class="history-list" 
+           role="region" 
+           aria-label="Verification history list">
+        <p class="loading-text">Loading history...</p>
       </div>
     </section>
 
     <!-- ========== PAGE: REGISTRY ========== -->
     <section id="page-registry" class="page {% if active_page=='registry' %}page-active{% endif %}">
-      <h2>Document Registry</h2>
+      <div class="page-header">
+        <h2>
+          <i data-lucide="database"></i>
+          Document Registry
+        </h2>
+        <button id="refreshRegistryBtn" 
+                class="btn-icon" 
+                aria-label="Refresh registry"
+                title="Refresh">
+          <i data-lucide="refresh-cw"></i>
+        </button>
+      </div>
       <div class="registry-table-wrapper">
-        <table class="registry-table">
+        <table class="registry-table" role="table" aria-label="Document registry">
           <thead>
             <tr>
-              <th>Document ID</th>
-              <th>File Name</th>
-              <th>Hash</th>
-              <th>Blockchain Tx</th>
-              <th>Timestamp</th>
+              <th scope="col">Document ID</th>
+              <th scope="col">File Name</th>
+              <th scope="col">Hash</th>
+              <th scope="col">Owner</th>
+              <th scope="col">Blockchain Tx</th>
+              <th scope="col">Status</th>
+              <th scope="col">Timestamp</th>
             </tr>
           </thead>
           <tbody id="registryTableBody">
-            <tr><td colspan="5">Loading registry...</td></tr>
+            <tr>
+              <td colspan="7" class="loading-text">Loading registry...</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -179,37 +382,75 @@
 
   </main>
 
-  <!-- Loader -->
-  <div id="loader" class="loader hidden">
-    <div class="loader-spinner"></div>
+  <!-- Loader Overlay -->
+  <div id="loader" class="loader hidden" role="status" aria-live="polite">
+    <div class="loader-spinner" aria-hidden="true"></div>
     <p id="loaderText">Processing...</p>
   </div>
 
   <!-- Toast Container -->
-  <div id="toastContainer" class="toast-container"></div>
+  <div id="toastContainer" 
+       class="toast-container" 
+       role="region" 
+       aria-label="Notifications"
+       aria-live="polite"></div>
 
   <!-- Preview Modal -->
-  <div id="previewModal" class="modal" style="display: none;">
+  <div id="previewModal" 
+       class="modal" 
+       style="display: none;"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="modalTitle">
     <div class="modal-content-wrapper">
-      <span class="close">&times;</span>
+      <button class="close" 
+              aria-label="Close modal"
+              type="button">&times;</button>
+      <h2 id="modalTitle" class="visually-hidden">File Preview</h2>
       <div id="modalContent" class="modal-content"></div>
     </div>
   </div>
 
-  <!-- app JS: served by Flask static root -->
+  <!-- App JavaScript: served by Flask static root -->
   <script src="/script.js"></script>
 
-  <!-- initialize lucide icons -->
+  <!-- Initialize Lucide Icons -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
+      console.info("🚀 DocChain Dashboard Initialized");
+      
+      // Initialize Lucide icons
       if (window.lucide) {
-        if (typeof lucide.createIcons === "function") {
-          try { lucide.createIcons(); } catch (e) { console.warn("lucide.createIcons failed", e); }
-        } else if (typeof lucide.replace === "function") {
-          try { lucide.replace(); } catch (e) { console.warn("lucide.replace failed", e); }
+        try {
+          if (typeof lucide.createIcons === "function") {
+            lucide.createIcons();
+          } else if (typeof lucide.replace === "function") {
+            lucide.replace();
+          }
+          console.info("✅ Lucide icons initialized");
+        } catch (e) {
+          console.warn("⚠️ Lucide initialization failed:", e);
         }
+      }
+
+      // Check for Ethers.js
+      if (typeof ethers !== "undefined") {
+        console.info("✅ Ethers.js loaded successfully");
+      } else {
+        console.error("❌ Ethers.js not loaded - blockchain features disabled");
+      }
+
+      // Check for MetaMask
+      if (typeof window.ethereum !== "undefined") {
+        console.info("✅ MetaMask detected");
+      } else {
+        console.warn("⚠️ MetaMask not detected - install from https://metamask.io");
       }
     });
   </script>
+
+  <!-- Screen Reader Announcements -->
+  <div class="visually-hidden" role="status" aria-live="polite" aria-atomic="true" id="srAnnouncements"></div>
+
 </body>
 </html>

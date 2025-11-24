@@ -1,8 +1,25 @@
+# Flask & Web Framework
 Flask==3.0.0
+Flask-CORS==4.0.0
 Werkzeug==3.0.1
-flasgger==0.9.7.1
+
+# API Documentation
+Flasgger==0.9.7.1
+
+# Blockchain Integration
 web3==6.11.3
-flask-cors==4.0.0
+
+# Rate Limiting
+Flask-Limiter==3.5.0
+
+# Database (Optional - for PostgreSQL support)
+psycopg2-binary==2.9.9
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Production Server
 gunicorn==21.2.0
-setuptools==69.0.0
-packaging==23.2
+
+# Security
+cryptography==41.0.7
