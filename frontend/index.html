@@ -14,12 +14,12 @@
   <!-- Lucide Icons (CDN) -->
   <script src="https://unpkg.com/lucide@latest"></script>
 
-  <!-- Ethers.js for Web3 Integration -->
-  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+  <!-- Ethers.js - Using jsdelivr CDN for better reliability -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 
   <!-- Expose backend base URL to frontend JS -->
   <script>
-    const API_BASE_URL = "{{ request.url_root[:-1] if request.url_root.endswith('/') else request.url_root }}";
+    const API_BASE_URL = window.location.origin || "http://localhost:5000";
     console.info("🔗 API_BASE_URL =", API_BASE_URL);
   </script>
 
@@ -317,10 +317,8 @@
              aria-label="Operation result"
              aria-live="polite"></div>
       </section>
-      <!-- end upload-card -->
 
     </section>
-    <!-- end page-workflow -->
 
     <!-- ========== PAGE: HISTORY ========== -->
     <section id="page-history" class="page {% if active_page=='history' %}page-active{% endif %}">
@@ -414,23 +412,26 @@
   <!-- App JavaScript: served by Flask static root -->
   <script src="/script.js"></script>
 
-  <!-- Initialize Lucide Icons -->
+  <!-- Initialize Lucide Icons and Check Dependencies -->
   <script>
     document.addEventListener("DOMContentLoaded", () => {
       console.info("🚀 DocChain Dashboard Initialized");
       
-      // Initialize Lucide icons
+      // Initialize Lucide icons (safer single-method approach)
       if (window.lucide) {
         try {
-          if (typeof lucide.createIcons === "function") {
-            lucide.createIcons();
-          } else if (typeof lucide.replace === "function") {
+          // Use only replace() to avoid method conflicts
+          if (typeof lucide.replace === "function") {
             lucide.replace();
+            console.info("✅ Lucide icons initialized");
+          } else {
+            console.warn("⚠️ Lucide replace method not available");
           }
-          console.info("✅ Lucide icons initialized");
         } catch (e) {
-          console.warn("⚠️ Lucide initialization failed:", e);
+          console.warn("⚠️ Lucide initialization warning:", e);
         }
+      } else {
+        console.error("❌ Lucide library not loaded");
       }
 
       // Check for Ethers.js
@@ -438,6 +439,7 @@
         console.info("✅ Ethers.js loaded successfully");
       } else {
         console.error("❌ Ethers.js not loaded - blockchain features disabled");
+        console.warn("⚠️ Check if CDN is accessible");
       }
 
       // Check for MetaMask

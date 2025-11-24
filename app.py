@@ -10,6 +10,18 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 # ============================================
+# LOAD ENVIRONMENT VARIABLES
+# ============================================
+
+# Load .env file for local development
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ Environment variables loaded from .env")
+except ImportError:
+    print("⚠️  python-dotenv not installed. Using system environment variables only.")
+
+# ============================================
 # CONFIGURATION & SECURITY
 # ============================================
 
@@ -282,34 +294,8 @@ def registry_page():
 @app.route("/api/upload", methods=["POST"])
 @limiter.limit("10 per hour")
 def upload_document():
-    """
-    Upload and register a document
-    ---
-    tags:
-      - Documents
-    consumes:
-      - multipart/form-data
-    parameters:
-      - name: file
-        in: formData
-        type: file
-        required: true
-        description: Document file to upload
-      - name: owner
-        in: formData
-        type: string
-        required: false
-        description: Owner name (default anonymous)
-    responses:
-      200:
-        description: Document uploaded successfully
-      400:
-        description: Invalid request
-      500:
-        description: Server error
-    """
+    """Upload and register a document"""
     try:
-        # Validate file presence
         if "file" not in request.files:
             return jsonify({"error": "No file provided"}), 400
 
@@ -317,35 +303,29 @@ def upload_document():
         if file.filename == "":
             return jsonify({"error": "Empty filename"}), 400
 
-        # Validate file type
         if not allowed_file(file.filename):
             return jsonify({
                 "error": f"File type not allowed. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
             }), 400
 
-        # Secure filename and save temporarily
         filename = secure_filename(file.filename)
         document_id = str(uuid.uuid4())
         file_path = os.path.join(UPLOAD_FOLDER, f"{document_id}_{filename}")
         file.save(file_path)
 
-        # Generate hash
         file_hash = generate_chunk_hash(file_path)
         
-        # DELETE FILE IMMEDIATELY after hashing (security best practice)
         try:
             os.remove(file_path)
             logger.info(f"Deleted temporary file: {file_path}")
         except Exception as e:
             logger.warning(f"Failed to delete file: {e}")
 
-        # Validate and sanitize owner name
         owner = request.form.get("owner", "anonymous")
         owner = validate_owner_name(owner)
         
         ts_now = int(time.time())
 
-        # Save to database
         db = load_db()
         db[document_id] = {
             "fileName": filename,
@@ -359,7 +339,6 @@ def upload_document():
         }
         save_db(db)
 
-        # Log to history
         append_history({
             "timestamp": ts_now,
             "action": "upload_prepared",
@@ -387,69 +366,33 @@ def upload_document():
         }), 200
 
     except ValueError as e:
-        # Client errors (validation, etc.)
         logger.warning(f"Validation error in upload: {str(e)}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        # Server errors (don't expose details)
         logger.error(f"Upload error: {str(e)}", exc_info=True)
         return jsonify({"error": "An internal server error occurred during upload"}), 500
-
 
 @app.route("/api/confirm_register", methods=["POST"])
 @limiter.limit("20 per hour")
 def confirm_register():
-    """
-    Confirm blockchain registration with transaction hash
-    ---
-    tags:
-      - Documents
-    parameters:
-      - name: body
-        in: body
-        required: true
-        schema:
-          type: object
-          properties:
-            documentID:
-              type: string
-              description: Document UUID
-            blockchainTx:
-              type: string
-              description: Blockchain transaction hash
-            blockNumber:
-              type: integer
-              description: Block number (optional)
-    responses:
-      200:
-        description: Registration confirmed
-      400:
-        description: Invalid request
-      404:
-        description: Document not found
-      500:
-        description: Server error
-    """
+    """Confirm blockchain registration"""
     try:
         data = request.get_json(force=True)
         document_id = data.get("documentID")
         blockchain_tx = data.get("blockchainTx")
         block_number = data.get("blockNumber")
 
-        # Validate inputs
         if not document_id or not blockchain_tx:
             return jsonify({"error": "documentID and blockchainTx are required"}), 400
 
         document_id = validate_document_id(document_id)
 
-        # Load database
         db = load_db()
         meta = db.get(document_id)
         
         if not meta:
             return jsonify({"error": "Document not found in registry"}), 404
 
-        # Update document with blockchain info
         meta["blockchainTx"] = blockchain_tx
         meta["blockNumber"] = block_number
         meta["registered"] = True
@@ -457,7 +400,6 @@ def confirm_register():
         db[document_id] = meta
         save_db(db)
 
-        # Log to history
         append_history({
             "timestamp": int(time.time()),
             "action": "blockchain_confirmed",
@@ -486,38 +428,11 @@ def confirm_register():
         logger.error(f"Confirm register error: {str(e)}", exc_info=True)
         return jsonify({"error": "An internal server error occurred"}), 500
 
-
 @app.route("/verify", methods=["POST"])
 @limiter.limit("100 per hour")
 def verify_document():
-    """
-    Verify a document by hash or document ID
-    ---
-    tags:
-      - Documents
-    consumes:
-      - multipart/form-data
-    parameters:
-      - name: file
-        in: formData
-        type: file
-        required: true
-        description: Document file to verify
-      - name: documentID
-        in: formData
-        type: string
-        required: false
-        description: Document ID (optional)
-    responses:
-      200:
-        description: Verification result
-      400:
-        description: Invalid request
-      500:
-        description: Server error
-    """
+    """Verify document"""
     try:
-        # Validate file presence
         if "file" not in request.files:
             return jsonify({
                 "verified": False, 
@@ -533,12 +448,10 @@ def verify_document():
                 "message": "Empty filename"
             }), 400
 
-        # Compute hash of uploaded file
         temp_path = os.path.join("temp", str(uuid.uuid4()))
         file.save(temp_path)
         provided_hash = generate_chunk_hash(temp_path)
         
-        # Delete temp file immediately
         try:
             os.remove(temp_path)
         except Exception:
@@ -548,12 +461,10 @@ def verify_document():
         db = load_db()
         ts_now = int(time.time())
 
-        # Get document ID if provided
         document_id = (request.form.get("documentID") or 
                       request.form.get("documentId") or 
                       request.form.get("document_id"))
 
-        # Scenario 1: Verify by document ID
         if document_id:
             try:
                 document_id = validate_document_id(document_id)
@@ -588,7 +499,6 @@ def verify_document():
             blockchain_tx = meta.get("blockchainTx")
 
             if stored_hash == provided_hash_norm:
-                # SUCCESS: Hashes match
                 append_history({
                     "timestamp": ts_now,
                     "action": "verify_success",
@@ -612,7 +522,6 @@ def verify_document():
                     "message": "✅ Document verified successfully. Hashes match."
                 }), 200
             else:
-                # FAILURE: Hash mismatch (tampered)
                 append_history({
                     "timestamp": ts_now,
                     "action": "verify_failed",
@@ -634,7 +543,6 @@ def verify_document():
                     "message": "⚠️ Document has been tampered with. Hash mismatch detected."
                 }), 200
 
-        # Scenario 2: Fallback - search by hash only
         for doc_id, meta in db.items():
             if (meta.get("fileHash") or "").replace("0x", "").lower() == provided_hash_norm:
                 append_history({
@@ -659,7 +567,6 @@ def verify_document():
                     "message": "✅ Document found and verified by hash"
                 }), 200
 
-        # Not found
         append_history({
             "timestamp": ts_now,
             "action": "verify_failed",
@@ -693,18 +600,9 @@ def verify_document():
             "message": "An internal server error occurred"
         }), 500
 
-
 @app.route("/api/documents", methods=["GET"])
 def list_documents():
-    """
-    List all registered documents
-    ---
-    tags:
-      - Documents
-    responses:
-      200:
-        description: List of documents
-    """
+    """List all documents"""
     try:
         db = load_db()
         docs = []
@@ -720,25 +618,15 @@ def list_documents():
                 "registered": meta.get("registered", False),
                 "registeredAt": meta.get("registeredAt")
             })
-        # Sort by timestamp (newest first)
         docs_sorted = sorted(docs, key=lambda d: d.get("timestamp", 0), reverse=True)
         return jsonify(docs_sorted)
     except Exception as e:
         logger.error(f"List documents error: {str(e)}", exc_info=True)
         return jsonify({"error": "Failed to retrieve documents"}), 500
 
-
 @app.route("/api/history", methods=["GET"])
 def api_history():
-    """
-    Get verification history
-    ---
-    tags:
-      - History
-    responses:
-      200:
-        description: History list
-    """
+    """Get history"""
     try:
         history = load_history()
         history_sorted = sorted(history, key=lambda h: h.get("timestamp", 0), reverse=True)
@@ -747,18 +635,9 @@ def api_history():
         logger.error(f"History error: {str(e)}", exc_info=True)
         return jsonify({"error": "Failed to retrieve history"}), 500
 
-
 @app.route("/api/stats", methods=["GET"])
 def stats():
-    """
-    Get system statistics
-    ---
-    tags:
-      - Statistics
-    responses:
-      200:
-        description: Statistics object
-    """
+    """Get stats"""
     try:
         db = load_db()
         history = load_history()
@@ -780,18 +659,9 @@ def stats():
         logger.error(f"Stats error: {str(e)}", exc_info=True)
         return jsonify({"error": "Failed to retrieve statistics"}), 500
 
-
 @app.route("/api/contract", methods=["GET"])
 def api_contract():
-    """
-    Get smart contract details
-    ---
-    tags:
-      - Blockchain
-    responses:
-      200:
-        description: Contract address and ABI
-    """
+    """Get contract details"""
     return jsonify({
         "contract_address": CONTRACT_ADDRESS,
         "contract_abi": CONTRACT_ABI,
@@ -799,23 +669,11 @@ def api_contract():
         "explorer": f"https://sepolia.etherscan.io/address/{CONTRACT_ADDRESS}"
     })
 
-
 @app.route("/health", methods=["GET"])
 def health():
-    """
-    Health check endpoint
-    ---
-    tags:
-      - System
-    responses:
-      200:
-        description: System is healthy
-    """
+    """Health check"""
     try:
-        # Check Web3 connection
         is_connected = w3.is_connected()
-        
-        # Check database access
         db_accessible = os.path.exists(DB_FILE)
         
         return jsonify({
@@ -832,13 +690,10 @@ def health():
             "timestamp": int(time.time())
         }), 500
 
-
-# OPTIONS handler for CORS preflight
 @app.route("/<path:path>", methods=["OPTIONS"])
 def handle_options(path):
-    """Handle CORS preflight requests"""
+    """Handle CORS preflight"""
     return jsonify({"status": "ok"}), 200
-
 
 # ============================================
 # MAIN
@@ -849,7 +704,6 @@ if __name__ == "__main__":
     print("🚀 DocChain Backend Starting...")
     print("=" * 50)
     
-    # Validate environment
     print(f"✅ INFURA_URL configured")
     print(f"✅ CONTRACT_ADDRESS: {CONTRACT_ADDRESS}")
     print(f"✅ ACCOUNT_ADDRESS: {ACCOUNT_ADDRESS}")

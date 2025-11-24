@@ -406,7 +406,7 @@ function setBcStatus(isOnChain, txHash) {
         View Transaction
       </a>
     `;
-    if (window.lucide) lucide.replace();
+    if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
   } else {
     bcStatus.innerHTML = `
       <div class="status-badge status-offchain">
@@ -414,7 +414,9 @@ function setBcStatus(isOnChain, txHash) {
         <span>Not stored on blockchain</span>
       </div>
     `;
-    if (window.lucide) lucide.replace();
+    if (window.lucide && typeof lucide.createIcons === "function") {
+       lucide.createIcons();
+     }
   }
 }
 
@@ -450,7 +452,7 @@ function showToast(message, type = "info") {
   toastContainer.appendChild(toast);
   
   // Replace icons in toast
-  if (window.lucide) lucide.replace();
+  if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
 
   // Auto-remove after 4 seconds
   setTimeout(() => {
@@ -541,7 +543,7 @@ async function handleFile(file) {
       <strong>${file.name}</strong>
       <span class="file-size">(${sizeStr})</span>
     `;
-    if (window.lucide) lucide.replace();
+    if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
   }
 
   // Clear preview and result
@@ -586,7 +588,7 @@ async function handleFile(file) {
             <p>Preview not available for this file type</p>
           </div>
         `;
-        if (window.lucide) lucide.replace();
+        if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
       }
     }
 
@@ -718,7 +720,7 @@ if (registerBtn) {
           </div>
           <p class="note">⚠️ Save your Document ID - you'll need it to verify this document later!</p>
         `;
-        if (window.lucide) lucide.replace();
+        if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
       }
 
       // Update blockchain status
@@ -775,7 +777,7 @@ if (registerBtn) {
           <p>${error.message}</p>
           <p class="note">Please check your MetaMask connection and try again.</p>
         `;
-        if (window.lucide) lucide.replace();
+        if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
       }
 
       showToast(`❌ ${error.message}`, "error");
@@ -873,7 +875,7 @@ if (verifyBtn) {
             </div>
             <p class="note">✅ This document's integrity has been verified against the blockchain registry.</p>
           `;
-          if (window.lucide) lucide.replace();
+          if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
         }
 
         setBcStatus(Boolean(data.blockchain_tx), data.blockchain_tx || null);
@@ -910,7 +912,7 @@ if (verifyBtn) {
               </div>
               <p class="note">⚠️ The document has been modified since registration. Hash mismatch detected.</p>
             `;
-            if (window.lucide) lucide.replace();
+            if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
           }
           showToast("⚠️ Document has been tampered with", "error");
 
@@ -935,7 +937,7 @@ if (verifyBtn) {
               </div>
               <p class="note">❌ This document is not registered in the blockchain registry.</p>
             `;
-            if (window.lucide) lucide.replace();
+            if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
           }
           showToast("❌ Document not registered", "error");
         }
@@ -960,7 +962,7 @@ if (verifyBtn) {
           <p>An error occurred during verification.</p>
           <p class="error-message">${error.message}</p>
         `;
-        if (window.lucide) lucide.replace();
+        if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
       }
 
       showToast(`❌ Verification failed: ${error.message}`, "error");
@@ -1039,7 +1041,7 @@ if (themeToggle) {
       <span>Theme</span>
     `;
 
-    if (window.lucide) lucide.replace();
+    if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
 
     // Save preference
     localStorage.setItem("theme", isDark ? "dark" : "light");
@@ -1172,7 +1174,7 @@ async function loadRegistry() {
       registryTableBody.appendChild(tr);
     });
 
-    if (window.lucide) lucide.replace();
+    if (window.lucide && typeof lucide.createIcons === "function") { lucide.createIcons(); }
 
   } catch (error) {
     console.error("Failed to load registry:", error);
@@ -1319,7 +1321,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (typeof lucide.createIcons === "function") {
         lucide.createIcons();
       } else if (typeof lucide.replace === "function") {
+        if (typeof lucide.createIcons === "function") {
+        lucide.createIcons();
+      } else if (typeof lucide.replace === "function") {
         lucide.replace();
+      }
       }
     } catch (e) {
       console.warn("Lucide icon initialization failed:", e);
