@@ -23,3 +23,5 @@ gunicorn==21.2.0
 
 # Security
 cryptography==41.0.7
+
+setuptools>=65.0.0
